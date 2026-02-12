@@ -9,16 +9,5 @@
     { "source": "/favicon.png", "destination": "/wwwroot/favicon.png" },
     { "source": "/", "destination": "/wwwroot/index.html" },
     { "source": "/(.*)", "destination": "/wwwroot/index.html" }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/styles.css", "dest": "/wwwroot/styles.css" },
-    { "src": "/app.js", "dest": "/wwwroot/app.js" },
-    { "src": "/schema.json", "dest": "/wwwroot/schema.json" },
-    { "src": "/icons/(.*)", "dest": "/wwwroot/icons/$1" },
-    { "src": "/favicon\\.ico", "dest": "/wwwroot/favicon.ico" },
-    { "src": "/favicon\\.png", "dest": "/wwwroot/favicon.png" },
-    { "src": "/", "dest": "/wwwroot/index.html" },
-    { "src": "/(.*)", "dest": "/wwwroot/index.html" }
   ]
 }
