@@ -163,17 +163,6 @@ button {
 }
 button.danger { background: var(--danger); color: white; }
 .grid-actions { display: flex; gap: 6px; }
-.icon-btn {
-  width: 40px;
-  padding: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.icon-btn img {
-  width: 18px;
-  height: 18px;
-}
 .output {
   white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
