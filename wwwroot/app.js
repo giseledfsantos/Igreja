@@ -120,6 +120,7 @@ function collectPayload(container) {
       if (v === '') v = null
       else if (/^-?\d+$/.test(v)) v = Number(v)
     }
+    if (typeof v === 'string' && k && k.toLowerCase() === 'cpf' && v.trim() === '') v = null
     payload[k] = v
   })
   return payload
@@ -237,6 +238,17 @@ function renderMembersScreen(schema, table) {
   subtabs.appendChild(btnConsulta)
   subtabs.appendChild(btnCadastro)
   screens.appendChild(subtabs)
+  const status = document.createElement('div')
+  status.className = 'status'
+  screens.appendChild(status)
+  function showStatus(text, type) {
+    status.textContent = text
+    status.classList.remove('success', 'error')
+    if (type === 'success') status.classList.add('success')
+    if (type === 'error') status.classList.add('error')
+    status.style.display = ''
+    setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
 
   const panelConsulta = document.createElement('div')
   const cardList = document.createElement('section')
@@ -245,25 +257,36 @@ function renderMembersScreen(schema, table) {
   hList.textContent = 'Lista de membros'
   const listWrap = document.createElement('div')
   listWrap.className = 'list-items'
-  const btnRefresh = document.createElement('button')
-  btnRefresh.textContent = 'Atualizar lista'
-  btnRefresh.onclick = async () => {
+  async function refreshList() {
     listWrap.innerHTML = ''
     try {
       const data = await apiList(table.name)
+      console.log('Consulta:list', { count: Array.isArray(data) ? data.length : 0, sample: Array.isArray(data) ? data.slice(0, 3) : data })
       data.forEach(item => {
         const div = document.createElement('div')
         div.className = 'list-item'
-        const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || `ID ${item[table.pk]}`
-        const subtitle = document.createElement('div'); subtitle.className = 'subtitle'; subtitle.textContent = `ID ${item[table.pk]}`
-        const action = document.createElement('button'); action.textContent = 'Editar'
-        action.onclick = () => {
+        const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
+        const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
+        const btnEdit = document.createElement('button'); btnEdit.title = 'Editar'; btnEdit.classList.add('icon-btn'); btnEdit.innerHTML = '<img src="/icons/edit.svg" alt="Editar">'
+        btnEdit.onclick = () => {
           fillCadastro(item)
           setActiveCadastro()
         }
+        const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.className = 'danger icon-btn'; btnDelete.innerHTML = '<img src="/icons/trash.svg" alt="Excluir">'
+        btnDelete.onclick = async () => {
+          try {
+            const id = item[table.pk]
+            await apiDelete(table.name, table.pk, id)
+            showStatus('Excluído', 'success')
+            refreshList()
+          } catch (e) {
+            showStatus(String(e.message || e), 'error')
+          }
+        }
+        actionsDiv.appendChild(btnEdit)
+        actionsDiv.appendChild(btnDelete)
         div.appendChild(title)
-        div.appendChild(subtitle)
-        div.appendChild(action)
+        div.appendChild(actionsDiv)
         listWrap.appendChild(div)
       })
     } catch (e) {
@@ -271,7 +294,6 @@ function renderMembersScreen(schema, table) {
     }
   }
   cardList.appendChild(hList)
-  cardList.appendChild(btnRefresh)
   cardList.appendChild(listWrap)
   panelConsulta.appendChild(cardList)
 
@@ -293,41 +315,27 @@ function renderMembersScreen(schema, table) {
   table.fields.forEach(f => form.appendChild(renderField(f)))
   const actions = document.createElement('div')
   actions.className = 'actions'
-  const btnCriar = document.createElement('button')
-  btnCriar.textContent = 'Criar novo'
   const btnSalvar = document.createElement('button')
-  btnSalvar.textContent = 'Salvar alterações'
-  const btnExcluir = document.createElement('button')
-  btnExcluir.textContent = 'Excluir'
-  btnExcluir.className = 'danger'
-  const btnLimpar = document.createElement('button')
-  btnLimpar.textContent = 'Limpar'
-
-  btnCriar.onclick = async () => {
-    try {
-      const res = await apiCreate(table.name, collectPayload(form))
-      const created = Array.isArray(res) ? res[0] : res
-      idInput.value = created?.[table.pk] ?? ''
-    } catch (e) { console.error(e) }
-  }
+  btnSalvar.textContent = 'Salvar'
 
   btnSalvar.onclick = async () => {
-    if (!idInput.value.trim()) { return }
-    try { await apiUpdate(table.name, table.pk, idInput.value.trim(), collectPayload(form)) } catch (e) { console.error(e) }
-  }
-
-  btnExcluir.onclick = async () => {
-    if (!idInput.value.trim()) { return }
-    try { await apiDelete(table.name, table.pk, idInput.value.trim()); btnLimpar.click() } catch (e) { console.error(e) }
-  }
-
-  btnLimpar.onclick = () => {
-    idInput.value = ''
-    form.querySelectorAll('input,textarea,select').forEach(i => {
-      const type = i.type
-      if (type === 'checkbox') i.checked = false
-      else i.value = ''
-    })
+    try { 
+      const payload = collectPayload(form)
+      if (!idInput.value.trim()) {
+        const res = await apiCreate(table.name, payload)
+        console.log('Cadastro:salvar:create', { payload, res })
+        const created = Array.isArray(res) ? res[0] : res
+        idInput.value = created?.[table.pk] ?? ''
+        showStatus('Membro criado', 'success')
+      } else {
+        const id = idInput.value.trim()
+        const res = await apiUpdate(table.name, table.pk, id, payload) 
+        console.log('Cadastro:salvar:update', { id, payload, res })
+        showStatus('Alterações salvas', 'success')
+      }
+      listWrap.innerHTML = ''
+      setActiveConsulta()
+    } catch (e) { console.log('Cadastro:salvar:error', e); showStatus(String(e.message || e), 'error') }
   }
 
   function fillCadastro(item) {
@@ -341,10 +349,7 @@ function renderMembersScreen(schema, table) {
     })
   }
 
-  actions.appendChild(btnCriar)
   actions.appendChild(btnSalvar)
-  actions.appendChild(btnExcluir)
-  actions.appendChild(btnLimpar)
 
   cardCad.appendChild(hCad)
   cardCad.appendChild(idWrap)
@@ -358,6 +363,7 @@ function renderMembersScreen(schema, table) {
   function setActiveConsulta() {
     btnConsulta.classList.add('active'); btnCadastro.classList.remove('active')
     panelConsulta.style.display = ''; panelCadastro.style.display = 'none'
+    refreshList()
   }
   function setActiveCadastro() {
     btnCadastro.classList.add('active'); btnConsulta.classList.remove('active')
