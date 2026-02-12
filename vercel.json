@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/", "destination": "/wwwroot/index.html" },
+    { "source": "/styles.css", "destination": "/wwwroot/styles.css" },
+    { "source": "/app.js", "destination": "/wwwroot/app.js" },
+    { "source": "/schema.json", "destination": "/wwwroot/schema.json" },
+    { "source": "/icons/(.*)", "destination": "/wwwroot/icons/$1" }
+  ]
+}
