@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import { crudRouter } from './routes/crud'
+import { crudRouter } from './routes/crud.js'
 
 const app = express()
 app.use(cors())

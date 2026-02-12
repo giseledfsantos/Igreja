@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listAll, getById, create, update, remove } from '../services/crudService'
+import { listAll, getById, create, update, remove } from '../services/crudService.js'
 
 export const crudRouter = Router()
 

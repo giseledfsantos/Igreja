@@ -1,4 +1,4 @@
-import { supabase } from '../db/supabase'
+import { supabase } from '../db/supabase.js'
 
 export async function listAll(table: string) {
   const { data, error } = await supabase.from(table).select('*')
