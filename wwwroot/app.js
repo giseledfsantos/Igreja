@@ -267,12 +267,12 @@ function renderMembersScreen(schema, table) {
         div.className = 'list-item'
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
-        const btnEdit = document.createElement('button'); btnEdit.title = 'Editar'; btnEdit.classList.add('icon-btn'); btnEdit.innerHTML = '<img src="/icons/edit.svg" alt="Editar">'
+        const btnEdit = document.createElement('button'); btnEdit.title = 'Editar'; btnEdit.textContent = 'Editar'
         btnEdit.onclick = () => {
           fillCadastro(item)
           setActiveCadastro()
         }
-        const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.className = 'danger icon-btn'; btnDelete.innerHTML = '<img src="/icons/trash.svg" alt="Excluir">'
+        const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.className = 'danger'; btnDelete.textContent = 'Excluir'
         btnDelete.onclick = async () => {
           try {
             const id = item[table.pk]
