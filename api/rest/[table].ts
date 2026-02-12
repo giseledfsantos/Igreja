@@ -1,9 +1,7 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_KEY ?? ''
 
-function buildAuthHeaders(req: VercelRequest) {
+function buildAuthHeaders(req: any) {
   const headers: Record<string, string> = {
     Accept: 'application/json'
   }
@@ -14,7 +12,7 @@ function buildAuthHeaders(req: VercelRequest) {
   return headers
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   try {
     if (req.method === 'OPTIONS') {
       res.status(200).send('')
