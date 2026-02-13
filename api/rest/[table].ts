@@ -19,7 +19,8 @@ export default async function handler(req: any, res: any) {
       return
     }
 
-    const table = req.query.table as string
+    const urlObj = new URL(req.url || '/', `https://${req.headers.host || 'localhost'}`)
+    const table = (req.query?.table as string) || (urlObj.pathname.split('/').pop() as string)
     if (!table) {
       res.status(400).json({ error: 'Tabela não informada' })
       return
@@ -29,7 +30,7 @@ export default async function handler(req: any, res: any) {
     const authHeaders = buildAuthHeaders(req)
 
     if (req.method === 'GET') {
-      const select = (req.query.select as string) || '*'
+      const select = urlObj.searchParams.get('select') || '*'
       const url = `${base}?select=${encodeURIComponent(select)}`
       const r = await fetch(url, { method: 'GET', headers: authHeaders })
       const text = await r.text()
@@ -47,8 +48,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'PATCH') {
-      const pk = (req.query.pk as string) || 'id'
-      const id = (req.query.id as string) || ''
+      const pk = urlObj.searchParams.get('pk') || 'id'
+      const id = urlObj.searchParams.get('id') || ''
       const filter = id ? `?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}` : ''
       const url = `${base}${filter}`
       const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {})
@@ -60,8 +61,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'DELETE') {
-      const pk = (req.query.pk as string) || 'id'
-      const id = (req.query.id as string) || ''
+      const pk = urlObj.searchParams.get('pk') || 'id'
+      const id = urlObj.searchParams.get('id') || ''
       const filter = id ? `?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}` : ''
       const url = `${base}${filter}`
       const r = await fetch(url, { method: 'DELETE', headers: authHeaders })
