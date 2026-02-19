@@ -4,7 +4,6 @@ const API_KEY = 'sb_publishable_kmvt5bwvVonTji9qWqgjKg_r8oKsCRs'
 function headers() {
   return {
     apikey: API_KEY,
-    Authorization: 'Bearer ' + API_KEY,
     'Content-Type': 'application/json',
     Accept: 'application/json',
     Prefer: 'return=representation'
