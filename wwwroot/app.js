@@ -3,7 +3,6 @@ const API_KEY = 'sb_publishable_kmvt5bwvVonTji9qWqgjKg_r8oKsCRs'
 
 function headers() {
   return {
-    apikey: API_KEY,
     'Content-Type': 'application/json',
     Accept: 'application/json',
     Prefer: 'return=representation'
@@ -13,28 +12,22 @@ function headers() {
 // Descoberta OpenAPI desabilitada para evitar bloqueios de CORS; usamos schema local.
 
 async function apiList(table) {
-  const url = `${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}?select=*`
-  const res = await fetch(url, { headers: headers() })
+  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?select=*`, { headers: headers() })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 async function apiCreate(table, payload) {
-  const url = `${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}`
-  const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
+  const res = await fetch(`/api/rest/${encodeURIComponent(table)}`, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 async function apiUpdate(table, pk, id, payload) {
-  const filter = `?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}`
-  const url = `${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}${filter}`
-  const res = await fetch(url, { method: 'PATCH', headers: headers(), body: JSON.stringify(payload) })
+  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`, { method: 'PATCH', headers: headers(), body: JSON.stringify(payload) })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 async function apiDelete(table, pk, id) {
-  const filter = `?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}`
-  const url = `${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}${filter}`
-  const res = await fetch(url, { method: 'DELETE', headers: headers() })
+  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() })
   if (!res.ok) throw new Error(await res.text())
 }
 
