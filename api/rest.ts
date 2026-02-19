@@ -1,10 +1,10 @@
-const SUPABASE_URL = process.env.SUPABASE_URL
-const SUPABASE_KEY = process.env.SUPABASE_KEY
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
+const SUPABASE_KEY = process.env.SUPABASE_KEY ?? ''
 
 function buildAuthHeaders(req: any) {
   const apiKey = req.headers['apikey'] || SUPABASE_KEY
   const auth = req.headers['authorization'] || (apiKey ? `Bearer ${apiKey}` : '')
-  const h: Record<string, string> = {}
+  const h: Record<string, string> = { Accept: 'application/json' }
   if (apiKey) h['apikey'] = String(apiKey)
   if (auth) h['Authorization'] = String(auth)
   return h
