@@ -1,6 +1,7 @@
 {
   "outputDirectory": "wwwroot",
   "rewrites": [
+    { "source": "/api/rest/(.*)", "destination": "/api/rest?table=$1" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/", "destination": "/api/root" },
     { "source": "/styles.css", "destination": "/wwwroot/styles.css" },
