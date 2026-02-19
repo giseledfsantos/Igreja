@@ -1,0 +1,14 @@
+{
+  "outputDirectory": "wwwroot",
+  "rewrites": [
+    { "source": "/api/rest/(.*)", "destination": "/api/rest?table=$1" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/", "destination": "/api/root" },
+    { "source": "/styles.css", "destination": "/wwwroot/styles.css" },
+    { "source": "/app.js", "destination": "/wwwroot/app.js" },
+    { "source": "/schema.json", "destination": "/wwwroot/schema.json" },
+    { "source": "/favicon.ico", "destination": "/api/favicon?type=ico" },
+    { "source": "/favicon.png", "destination": "/api/favicon?type=png" },
+    { "source": "/(.*)", "destination": "/wwwroot/index.html" }
+  ]
+}
