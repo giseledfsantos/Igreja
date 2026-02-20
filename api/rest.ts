@@ -78,6 +78,7 @@ export default async function handler(req: any, res: any) {
     res.status(405).json({ error: 'Método não suportado' })
   } catch (err: any) {
     const msg = err?.message ?? 'Erro interno'
+    try { console.error('api/rest:error', msg) } catch {}
     res.status(502).json({ error: msg })
   }
 }
