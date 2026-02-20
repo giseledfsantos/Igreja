@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:5090");
+// builder.WebHost.UseUrls("http://localhost:5090");
 var app = builder.Build();
 
 app.UseDefaultFiles();
