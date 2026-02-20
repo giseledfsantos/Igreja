@@ -1,6 +1,11 @@
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_KEY ?? ''
 
+function ensureEnv() {
+  if (!SUPABASE_URL) throw new Error('SUPABASE_URL ausente no ambiente')
+  if (!SUPABASE_KEY) throw new Error('SUPABASE_KEY ausente no ambiente')
+}
+
 function buildAuthHeaders(req: any) {
   const headers: Record<string, string> = {
     Accept: 'application/json'
@@ -14,6 +19,7 @@ function buildAuthHeaders(req: any) {
 
 export default async function handler(req: any, res: any) {
   try {
+    ensureEnv()
     if (req.method === 'OPTIONS') {
       res.status(200).send('')
       return
@@ -73,6 +79,7 @@ export default async function handler(req: any, res: any) {
 
     res.status(405).json({ error: 'Método não suportado' })
   } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? 'Erro interno' })
+    const msg = err?.message ?? 'Erro interno'
+    res.status(502).json({ error: msg })
   }
 }
