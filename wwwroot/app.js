@@ -1,5 +1,8 @@
 const SUPABASE_URL = 'https://xytuuccwylwbefgkqxlr.supabase.co'
 const API_KEY = 'sb_publishable_kmvt5bwvVonTji9qWqgjKg_r8oKsCRs'
+const PROXY_BASE = '/api/rest'
+const DIRECT_BASE = `${SUPABASE_URL}/rest/v1`
+let API_MODE = null
 
 function headers() {
   return {
@@ -13,9 +16,31 @@ function headers() {
 
 // Descoberta OpenAPI desabilitada para evitar bloqueios de CORS; usamos schema local.
 
+async function apiFetch(path, init, fallbackPath) {
+  const proxyUrl = `${PROXY_BASE}${path}`
+  const directUrl = `${DIRECT_BASE}${fallbackPath ?? path}`
+  if (API_MODE === 'direct') {
+    const res = await fetch(directUrl, init)
+    if (!res.ok) throw new Error(await res.text())
+    return res
+  }
+  try {
+    const res = await fetch(proxyUrl, init)
+    if (res.status === 404) throw new Error('proxy_404')
+    if (!res.ok) throw new Error(await res.text())
+    API_MODE = 'proxy'
+    return res
+  } catch (e) {
+    const res = await fetch(directUrl, init)
+    if (!res.ok) throw new Error(await res.text())
+    API_MODE = 'direct'
+    return res
+  }
+}
+
 async function apiList(table) {
-  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?select=*`, { headers: headers() })
-  if (!res.ok) throw new Error(await res.text())
+  const q = `/${encodeURIComponent(table)}?select=*`
+  const res = await apiFetch(q, { headers: headers() })
   return res.json()
 }
 async function apiGet(table, params) {
@@ -24,23 +49,25 @@ async function apiGet(table, params) {
     if (v === undefined || v === null) return
     qs.set(k, String(v))
   })
-  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?${qs.toString()}`, { headers: headers() })
-  if (!res.ok) throw new Error(await res.text())
+  const q = `/${encodeURIComponent(table)}?${qs.toString()}`
+  const res = await apiFetch(q, { headers: headers() })
   return res.json()
 }
 async function apiCreate(table, payload) {
-  const res = await fetch(`/api/rest/${encodeURIComponent(table)}`, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
-  if (!res.ok) throw new Error(await res.text())
+  const q = `/${encodeURIComponent(table)}`
+  const res = await apiFetch(q, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
   return res.json()
 }
 async function apiUpdate(table, pk, id, payload) {
-  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`, { method: 'PATCH', headers: headers(), body: JSON.stringify(payload) })
-  if (!res.ok) throw new Error(await res.text())
+  const proxyQ = `/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`
+  const directQ = `/${encodeURIComponent(table)}?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}`
+  const res = await apiFetch(proxyQ, { method: 'PATCH', headers: headers(), body: JSON.stringify(payload) }, directQ)
   return res.json()
 }
 async function apiDelete(table, pk, id) {
-  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() })
-  if (!res.ok) throw new Error(await res.text())
+  const proxyQ = `/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`
+  const directQ = `/${encodeURIComponent(table)}?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}`
+  await apiFetch(proxyQ, { method: 'DELETE', headers: headers() }, directQ)
 }
 async function apiDeleteWhere(table, params) {
   const qs = new URLSearchParams()
@@ -50,8 +77,8 @@ async function apiDeleteWhere(table, params) {
   })
   const q = qs.toString()
   if (!q) throw new Error('DELETE requires filters')
-  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?${q}`, { method: 'DELETE', headers: headers() })
-  if (!res.ok) throw new Error(await res.text())
+  const path = `/${encodeURIComponent(table)}?${q}`
+  await apiFetch(path, { method: 'DELETE', headers: headers() })
 }
 
 function el(id) { return document.getElementById(id) }
