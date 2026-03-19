@@ -9,7 +9,7 @@
         { "key": "matricula", "label": "Matrícula", "type": "text" },
         { "key": "nome", "label": "Nome", "type": "text", "required": true },
         { "key": "sexo", "label": "Sexo", "type": "select", "options": ["Masculino","Feminino"] },
-        { "key": "estado_civil", "label": "Estado Civil", "type": "text" },
+        { "key": "estado_civil", "label": "Estado Civil", "type": "select", "source": { "table": "estado_civil", "value": "id", "label": "estado_civil" } },
         { "key": "data_nascimento", "label": "Data de Nascimento", "type": "date" },
         { "key": "cidade_nascimento", "label": "Cidade de Nascimento", "type": "text" },
         { "key": "uf_nascimento", "label": "UF Nascimento", "type": "text" },
