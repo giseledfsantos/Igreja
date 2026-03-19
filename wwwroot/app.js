@@ -136,6 +136,7 @@ function renderField(field, value = '') {
     input.value = value ?? ''
   } else if (field.type === 'select') {
     input = document.createElement('select')
+    input.dataset.initialValue = String(value ?? '')
     const opts = field.options
     if (Array.isArray(opts) && opts.length) {
       opts.forEach(opt => {
@@ -156,6 +157,7 @@ function renderField(field, value = '') {
           if (String(value) === val) o.selected = true
           input.appendChild(o)
         })
+        if (input.dataset.initialValue !== undefined) input.value = input.dataset.initialValue
       }).catch(() => {})
     }
   } else {
@@ -678,7 +680,7 @@ function renderMembersScreen(schema, table) {
       const k = i.dataset.key
       const v = item?.[k]
       if (i.type === 'checkbox') i.checked = !!v
-      else if (i.tagName === 'SELECT') i.value = v ?? ''
+      else if (i.tagName === 'SELECT') { i.dataset.initialValue = String(v ?? ''); i.value = v ?? '' }
       else i.value = v ?? ''
     })
     try {
