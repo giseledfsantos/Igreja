@@ -104,6 +104,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
+const APP_BUILD = '2026-03-19-2'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -115,7 +116,7 @@ function setButtonIcon(button, name) {
 async function loadSchema() {
   let configured = { tables: [] }
   try {
-    const resCfg = await fetch('/schema.json?v=2026-03-19-1')
+    const resCfg = await fetch(`/schema.json?v=${encodeURIComponent(APP_BUILD)}`)
     if (resCfg.ok) configured = await resCfg.json()
   } catch {}
   return configured
@@ -1011,6 +1012,12 @@ function activateTab(name) {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const h1 = document.querySelector('.app-header h1')
+    if (h1) h1.textContent = `Cadastros (${APP_BUILD})`
+    document.documentElement.dataset.build = APP_BUILD
+    console.log('APP_BUILD', APP_BUILD)
+  } catch {}
   schemaCache = await loadSchema()
   renderTabs(schemaCache)
   if (schemaCache.tables.length) activateTab(schemaCache.tables[0].name)
