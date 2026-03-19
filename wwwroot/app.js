@@ -131,7 +131,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-19-2'
+const APP_BUILD = '2026-03-19-3'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -699,6 +699,7 @@ function renderMembersScreen(schema, table) {
       await ensureGruposLoaded()
       const data = await apiList(CARGOS_INTERNOS_TABLE)
       cargosInternosCache = Array.isArray(data) ? data : []
+      console.log('CargosInternos:load', { count: cargosInternosCache.length, apiMode: API_MODE })
       const sample = cargosInternosCache[0] || {}
       cargosInternosIdKey = pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'id', 'codigo'])
       cargosInternosLabelKey = guessLabelKey(sample)
@@ -709,6 +710,10 @@ function renderMembersScreen(schema, table) {
 
       cargosInternosList.innerHTML = ''
       cargosInternosUI.clear()
+      if (!cargosInternosCache.length) {
+        cargosInternosList.textContent = 'Sem cargos internos.'
+        return
+      }
       cargosInternosCache.forEach(c => {
         const cargoId = String(c?.[cargosInternosIdKey] ?? '')
         const cargoLabel = String(c?.[cargosInternosLabelKey] ?? cargoId)
