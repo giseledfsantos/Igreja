@@ -184,6 +184,28 @@ input:focus, textarea:focus { border-color: #475569; }
   gap: 10px;
   margin-bottom: 10px;
 }
+.cargos-internos-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.cargos-internos .checklist-item {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.cargos-internos input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.cargos-internos-grupos {
+  width: 100%;
+  margin-left: 26px;
+}
 .actions { display: flex; gap: 10px; }
 button {
   appearance: none;

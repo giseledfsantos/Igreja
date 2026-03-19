@@ -42,6 +42,17 @@ async function apiDelete(table, pk, id) {
   const res = await fetch(`/api/rest/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() })
   if (!res.ok) throw new Error(await res.text())
 }
+async function apiDeleteWhere(table, params) {
+  const qs = new URLSearchParams()
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v === undefined || v === null) return
+    qs.set(k, String(v))
+  })
+  const q = qs.toString()
+  if (!q) throw new Error('DELETE requires filters')
+  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?${q}`, { method: 'DELETE', headers: headers() })
+  if (!res.ok) throw new Error(await res.text())
+}
 
 function el(id) { return document.getElementById(id) }
 function txt(el, data) { el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2) }
@@ -313,13 +324,30 @@ function renderMembersScreen(schema, table) {
   const status = document.createElement('div')
   status.className = 'status'
   screens.appendChild(status)
+  let statusTimer = null
   function showStatus(text, type) {
     status.textContent = text
     status.classList.remove('success', 'error')
     if (type === 'success') status.classList.add('success')
     if (type === 'error') status.classList.add('error')
     status.style.display = ''
-    setTimeout(() => { status.style.display = 'none' }, 2500)
+    if (statusTimer) clearTimeout(statusTimer)
+    if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+  if (!window.__igrejaErrorHooked) {
+    window.__igrejaErrorHooked = true
+    window.addEventListener('error', (ev) => {
+      try {
+        const m = String(ev?.message || ev?.error?.message || 'Erro de script')
+        showStatus(m, 'error')
+      } catch {}
+    })
+    window.addEventListener('unhandledrejection', (ev) => {
+      try {
+        const m = String(ev?.reason?.message || ev?.reason || 'Promise rejeitada')
+        showStatus(m, 'error')
+      } catch {}
+    })
   }
 
   const panelConsulta = document.createElement('div')
@@ -407,6 +435,16 @@ function renderMembersScreen(schema, table) {
           if (!intersectsSet(gruposQ, set)) return false
         }
         return true
+      })
+      filtered.sort((a, b) => {
+        const an = String(a?.nome ?? '').trim()
+        const bn = String(b?.nome ?? '').trim()
+        if (an && bn) return an.localeCompare(bn, 'pt-BR', { sensitivity: 'base' })
+        if (an) return -1
+        if (bn) return 1
+        const am = String(a?.matricula ?? '').trim()
+        const bm = String(b?.matricula ?? '').trim()
+        return am.localeCompare(bm, 'pt-BR', { sensitivity: 'base' })
       })
 
       console.log('Consulta:list', { count: Array.isArray(data) ? data.length : 0, filtered: filtered.length })
@@ -539,6 +577,14 @@ function renderMembersScreen(schema, table) {
   }
 
   const gruposField = createChecklistField('Grupos')
+  const cargosInternosWrap = document.createElement('div')
+  cargosInternosWrap.className = 'field cargos-internos'
+  const cargosInternosLabel = document.createElement('label')
+  cargosInternosLabel.textContent = 'Cargos Internos'
+  cargosInternosWrap.appendChild(cargosInternosLabel)
+  const cargosInternosList = document.createElement('div')
+  cargosInternosList.className = 'cargos-internos-list'
+  cargosInternosWrap.appendChild(cargosInternosList)
   filtroNomeInput = document.createElement('input')
   filtroNomeInput.type = 'text'
   filtroNomeInput.placeholder = 'Filtrar por nome...'
@@ -584,11 +630,21 @@ function renderMembersScreen(schema, table) {
 
   const GRUPOS_TABLE = 'grupos'
   const MEMBROS_GRUPO_TABLE = 'membros_grupo'
+  const CARGOS_INTERNOS_TABLE = 'cargos_internos'
+  const MEMBROS_CARGOS_INTERNOS_TABLE = 'membros_cargos_internos'
   let gruposCache = null
   let gruposIdKey = 'id'
   let gruposLabelKey = 'nome'
   const membrosGrupoMembroKey = 'id_membro'
   const membrosGrupoGrupoKey = 'id_grupo'
+  let cargosInternosCache = null
+  let cargosInternosIdKey = 'id'
+  let cargosInternosLabelKey = 'nome'
+  let cargosInternosPorGrupoKey = 'por_grupo'
+  const membrosCargosInternosMembroKey = 'id_membro'
+  const membrosCargosInternosCargoKey = 'id_cargos_internos'
+  const membrosCargosInternosGrupoKey = 'id_grupo'
+  const cargosInternosUI = new Map()
 
   async function ensureGruposLoaded() {
     if (gruposCache) return
@@ -609,6 +665,158 @@ function renderMembersScreen(schema, table) {
   }
   ensureGruposLoaded().catch(() => {})
 
+  async function ensureCargosInternosLoaded() {
+    if (cargosInternosCache) return
+    try {
+      await ensureGruposLoaded()
+      const data = await apiList(CARGOS_INTERNOS_TABLE)
+      cargosInternosCache = Array.isArray(data) ? data : []
+      const sample = cargosInternosCache[0] || {}
+      cargosInternosIdKey = pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'id', 'codigo'])
+      cargosInternosLabelKey = guessLabelKey(sample)
+      cargosInternosPorGrupoKey = Object.prototype.hasOwnProperty.call(sample, 'por_grupo') ? 'por_grupo' : (Object.prototype.hasOwnProperty.call(sample, 'porGrupo') ? 'porGrupo' : 'por_grupo')
+      const groupOptions = gruposCache
+        ? gruposCache.map(g => ({ value: g?.[gruposIdKey], label: String(g?.[gruposLabelKey] ?? g?.[gruposIdKey] ?? '') }))
+        : []
+
+      cargosInternosList.innerHTML = ''
+      cargosInternosUI.clear()
+      cargosInternosCache.forEach(c => {
+        const cargoId = String(c?.[cargosInternosIdKey] ?? '')
+        const cargoLabel = String(c?.[cargosInternosLabelKey] ?? cargoId)
+        const porGrupo = Boolean(c?.[cargosInternosPorGrupoKey])
+
+        const row = document.createElement('div')
+        row.className = 'checklist-item'
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.value = cargoId
+        const t = document.createElement('span')
+        t.textContent = cargoLabel
+        row.appendChild(cb)
+        row.appendChild(t)
+
+        let gruposPorCargoField = null
+        let gruposPorCargoWrap = null
+        if (porGrupo) {
+          gruposPorCargoField = createChecklistField('Grupos', () => {})
+          gruposPorCargoField.setOptions(groupOptions)
+          gruposPorCargoWrap = document.createElement('div')
+          gruposPorCargoWrap.className = 'cargos-internos-grupos'
+          gruposPorCargoWrap.style.display = 'none'
+          gruposPorCargoWrap.appendChild(gruposPorCargoField.wrap)
+          cb.onchange = () => {
+            gruposPorCargoWrap.style.display = cb.checked ? '' : 'none'
+            if (!cb.checked) gruposPorCargoField.setSelected([])
+          }
+        }
+
+        cargosInternosList.appendChild(row)
+        if (gruposPorCargoWrap) cargosInternosList.appendChild(gruposPorCargoWrap)
+        cargosInternosUI.set(cargoId, { cb, porGrupo, gruposPorCargoField })
+      })
+    } catch {
+      cargosInternosCache = []
+      cargosInternosList.textContent = 'Sem cargos internos.'
+      cargosInternosUI.clear()
+    }
+  }
+  ensureCargosInternosLoaded().catch(() => {})
+
+  async function loadSelectedCargosInternosForMember(memberId) {
+    await ensureGruposLoaded()
+    await ensureCargosInternosLoaded()
+    if (!memberId) {
+      cargosInternosUI.forEach(ui => {
+        ui.cb.checked = false
+        if (ui.porGrupo && ui.gruposPorCargoField) ui.gruposPorCargoField.setSelected([])
+      })
+      return
+    }
+    const rows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, {
+      select: `${membrosCargosInternosCargoKey},${membrosCargosInternosGrupoKey}`,
+      [membrosCargosInternosMembroKey]: `eq.${memberId}`
+    })
+    const byCargo = new Map()
+    ;(Array.isArray(rows) ? rows : []).forEach(r => {
+      const cid = String(r?.[membrosCargosInternosCargoKey] ?? '')
+      const gid = r?.[membrosCargosInternosGrupoKey]
+      if (!cid) return
+      if (!byCargo.has(cid)) byCargo.set(cid, new Set())
+      if (gid !== undefined && gid !== null && String(gid) !== '') byCargo.get(cid).add(String(gid))
+    })
+    cargosInternosUI.forEach((ui, cid) => {
+      const groups = byCargo.get(cid)
+      ui.cb.checked = !!groups
+      if (ui.porGrupo && ui.gruposPorCargoField) {
+        ui.gruposPorCargoField.setSelected(groups ? Array.from(groups.values()) : [])
+        const wrap = ui.gruposPorCargoField.wrap.parentElement
+        if (wrap) wrap.style.display = ui.cb.checked ? '' : 'none'
+      }
+    })
+  }
+
+  async function saveMemberCargosInternos(memberId) {
+    if (!memberId) return
+    const memberVal = /^\d+$/.test(String(memberId)) ? Number(memberId) : memberId
+    const desired = new Set()
+    const desiredRows = []
+    cargosInternosUI.forEach((ui, cid) => {
+      if (!ui.cb.checked) return
+      if (ui.porGrupo && ui.gruposPorCargoField) {
+        const groupIds = ui.gruposPorCargoField.getSelected().map(x => String(x)).filter(Boolean)
+        groupIds.forEach(gid => {
+          const k = `${String(cid)}|${String(gid)}`
+          if (desired.has(k)) return
+          desired.add(k)
+          desiredRows.push({
+            [membrosCargosInternosMembroKey]: memberVal,
+            [membrosCargosInternosCargoKey]: /^\d+$/.test(String(cid)) ? Number(cid) : cid,
+            [membrosCargosInternosGrupoKey]: gid
+          })
+        })
+      } else {
+        const k = `${String(cid)}|`
+        if (desired.has(k)) return
+        desired.add(k)
+        desiredRows.push({
+          [membrosCargosInternosMembroKey]: memberVal,
+          [membrosCargosInternosCargoKey]: /^\d+$/.test(String(cid)) ? Number(cid) : cid
+        })
+      }
+    })
+    const existingRows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, {
+      select: `${membrosCargosInternosCargoKey},${membrosCargosInternosGrupoKey}`,
+      [membrosCargosInternosMembroKey]: `eq.${memberId}`
+    })
+    const existing = new Set()
+    ;(Array.isArray(existingRows) ? existingRows : []).forEach(r => {
+      const cid = String(r?.[membrosCargosInternosCargoKey] ?? '')
+      const gid = r?.[membrosCargosInternosGrupoKey]
+      if (!cid) return
+      existing.add(`${cid}|${gid === undefined || gid === null ? '' : String(gid)}`)
+    })
+    const toAdd = desiredRows.filter(r => {
+      const cid = String(r?.[membrosCargosInternosCargoKey] ?? '')
+      const gid = r?.[membrosCargosInternosGrupoKey]
+      const k = `${cid}|${gid === undefined || gid === null ? '' : String(gid)}`
+      return !existing.has(k)
+    })
+    const toRemove = Array.from(existing.values()).filter(k => !desired.has(k))
+    if (toAdd.length) await apiCreate(MEMBROS_CARGOS_INTERNOS_TABLE, toAdd)
+    for (const k of toRemove) {
+      const idx = k.indexOf('|')
+      const cid = idx >= 0 ? k.slice(0, idx) : k
+      const gid = idx >= 0 ? k.slice(idx + 1) : ''
+      const filters = {
+        [membrosCargosInternosMembroKey]: `eq.${memberId}`,
+        [membrosCargosInternosCargoKey]: `eq.${cid}`,
+        [membrosCargosInternosGrupoKey]: gid ? `eq.${gid}` : 'is.null'
+      }
+      await apiDeleteWhere(MEMBROS_CARGOS_INTERNOS_TABLE, filters)
+    }
+  }
+
   async function loadSelectedGruposForMember(memberId) {
     await ensureGruposLoaded()
     if (!memberId) { gruposField.setSelected([]); return }
@@ -622,11 +830,25 @@ function renderMembersScreen(schema, table) {
 
   async function saveMemberGrupos(memberId, selectedGrupoIds) {
     if (!memberId) return
-    await apiDelete(MEMBROS_GRUPO_TABLE, membrosGrupoMembroKey, memberId)
     const ids = (selectedGrupoIds || []).map(x => String(x)).filter(Boolean)
-    if (!ids.length) return
-    const payload = ids.map(grupoId => ({ [membrosGrupoMembroKey]: memberId, [membrosGrupoGrupoKey]: grupoId }))
-    await apiCreate(MEMBROS_GRUPO_TABLE, payload)
+    const desired = new Set(ids)
+    const rows = await apiGet(MEMBROS_GRUPO_TABLE, {
+      select: membrosGrupoGrupoKey,
+      [membrosGrupoMembroKey]: `eq.${memberId}`
+    })
+    const existing = new Set((Array.isArray(rows) ? rows : []).map(r => String(r?.[membrosGrupoGrupoKey] ?? '')).filter(Boolean))
+    const toAdd = ids.filter(gid => !existing.has(gid))
+    const toRemove = Array.from(existing.values()).filter(gid => !desired.has(gid))
+    if (toAdd.length) {
+      const payload = toAdd.map(grupoId => ({ [membrosGrupoMembroKey]: /^\d+$/.test(String(memberId)) ? Number(memberId) : memberId, [membrosGrupoGrupoKey]: grupoId }))
+      await apiCreate(MEMBROS_GRUPO_TABLE, payload)
+    }
+    for (const gid of toRemove) {
+      await apiDeleteWhere(MEMBROS_GRUPO_TABLE, {
+        [membrosGrupoMembroKey]: `eq.${memberId}`,
+        [membrosGrupoGrupoKey]: `eq.${gid}`
+      })
+    }
   }
 
   const form = document.createElement('div')
@@ -645,6 +867,57 @@ function renderMembersScreen(schema, table) {
     }
     return msg
   }
+  function friendlyCargosInternosError(e) {
+    const msg = String(e?.message || e || '')
+    if (msg.includes('row-level security policy') && msg.includes('membros_cargos_internos')) {
+      return 'Sem permissão para salvar cargos internos (RLS do Supabase em "membros_cargos_internos").'
+    }
+    if (msg.includes('Could not find') && msg.includes('membros_cargos_internos')) {
+      return 'Falha ao salvar cargos internos (colunas da tabela "membros_cargos_internos" não conferem).'
+    }
+    if (msg.includes('invalid input syntax for type bigint')) {
+      return 'Falha ao salvar cargos internos (id do cargo precisa ser número).'
+    }
+    return msg
+  }
+  function friendlySalvarError(e) {
+    const msg = String(e?.message || e || '')
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      return 'Falha de conexão com o servidor.'
+    }
+    if (msg.includes('row-level security policy')) {
+      return 'Sem permissão para salvar (RLS do Supabase).'
+    }
+    return msg
+  }
+  function hasEmptyNumericInputError(e) {
+    const msg = String(e?.message || e || '')
+    const normalized = msg.replaceAll('\\"', '"')
+    return /invalid input syntax for type (?:bigint|integer|smallint):\s*""/.test(normalized)
+  }
+  function sanitizeEmptyStringsAsNull(payload) {
+    const next = {}
+    Object.entries(payload || {}).forEach(([k, v]) => {
+      next[k] = v === '' ? null : v
+    })
+    return next
+  }
+  async function apiCreateMembroWithRetry(payload) {
+    try {
+      return await apiCreate(table.name, payload)
+    } catch (e) {
+      if (!hasEmptyNumericInputError(e)) throw e
+      return await apiCreate(table.name, sanitizeEmptyStringsAsNull(payload))
+    }
+  }
+  async function apiUpdateMembroWithRetry(id, payload) {
+    try {
+      return await apiUpdate(table.name, table.pk, id, payload)
+    } catch (e) {
+      if (!hasEmptyNumericInputError(e)) throw e
+      return await apiUpdate(table.name, table.pk, id, sanitizeEmptyStringsAsNull(payload))
+    }
+  }
 
   btnSalvar.onclick = async () => {
     btnSalvar.disabled = true
@@ -652,25 +925,30 @@ function renderMembersScreen(schema, table) {
     try { 
       const payload = collectPayload(form)
       const selectedGrupoIds = gruposField.getSelected()
+      const warnings = []
       if (!idInput.value.trim()) {
-        const res = await apiCreate(table.name, payload)
+        const res = await apiCreateMembroWithRetry(payload)
         console.log('Cadastro:salvar:create', { payload, res })
         const created = Array.isArray(res) ? res[0] : res
         idInput.value = created?.[table.pk] ?? ''
         try { await saveMemberGrupos(idInput.value.trim(), selectedGrupoIds) }
-        catch (e) { console.log('Cadastro:salvar:grupos:error', e); showStatus(friendlyGruposError(e), 'error'); return }
-        showStatus('Membro criado', 'success')
+        catch (e) { console.log('Cadastro:salvar:grupos:error', e); warnings.push(friendlyGruposError(e)) }
+        try { await saveMemberCargosInternos(idInput.value.trim()) }
+        catch (e) { console.log('Cadastro:salvar:cargos_internos:error', e); warnings.push(friendlyCargosInternosError(e)) }
+        showStatus(warnings.length ? `Membro criado (${warnings.join(' | ')})` : 'Membro criado', 'success')
       } else {
         const id = idInput.value.trim()
-        const res = await apiUpdate(table.name, table.pk, id, payload) 
+        const res = await apiUpdateMembroWithRetry(id, payload) 
         console.log('Cadastro:salvar:update', { id, payload, res })
         try { await saveMemberGrupos(id, selectedGrupoIds) }
-        catch (e) { console.log('Cadastro:salvar:grupos:error', e); showStatus(friendlyGruposError(e), 'error'); return }
-        showStatus('Alterações salvas', 'success')
+        catch (e) { console.log('Cadastro:salvar:grupos:error', e); warnings.push(friendlyGruposError(e)) }
+        try { await saveMemberCargosInternos(id) }
+        catch (e) { console.log('Cadastro:salvar:cargos_internos:error', e); warnings.push(friendlyCargosInternosError(e)) }
+        showStatus(warnings.length ? `Alterações salvas (${warnings.join(' | ')})` : 'Alterações salvas', 'success')
       }
       listWrap.innerHTML = ''
       setActiveConsulta()
-    } catch (e) { console.log('Cadastro:salvar:error', e); showStatus(String(e.message || e), 'error') }
+    } catch (e) { console.log('Cadastro:salvar:error', e); showStatus(friendlySalvarError(e), 'error') }
     finally { btnSalvar.disabled = false }
   }
 
@@ -685,6 +963,7 @@ function renderMembersScreen(schema, table) {
     })
     try {
       await loadSelectedGruposForMember(idInput.value.trim())
+      await loadSelectedCargosInternosForMember(idInput.value.trim())
     } catch (e) {
       showStatus(String(e?.message || e), 'error')
     }
@@ -696,6 +975,7 @@ function renderMembersScreen(schema, table) {
   cardCad.appendChild(idWrap)
   cardCad.appendChild(form)
   cardCad.appendChild(gruposField.wrap)
+  cardCad.appendChild(cargosInternosWrap)
   cardCad.appendChild(actions)
   panelCadastro.appendChild(cardCad)
 
@@ -711,6 +991,7 @@ function renderMembersScreen(schema, table) {
     btnCadastro.classList.add('active'); btnConsulta.classList.remove('active')
     panelCadastro.style.display = ''; panelConsulta.style.display = 'none'
     loadSelectedGruposForMember(idInput.value.trim()).catch(() => {})
+    loadSelectedCargosInternosForMember(idInput.value.trim()).catch(() => {})
   }
   btnConsulta.onclick = setActiveConsulta
   btnCadastro.onclick = setActiveCadastro
