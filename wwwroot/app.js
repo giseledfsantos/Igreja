@@ -743,10 +743,17 @@ function renderMembersScreen(schema, table) {
         if (gruposPorCargoWrap) cargosInternosList.appendChild(gruposPorCargoWrap)
         cargosInternosUI.set(cargoId, { cb, porGrupo, gruposPorCargoField })
       })
-    } catch {
+    } catch (e) {
+      console.log('CargosInternos:load:error', e)
       cargosInternosCache = []
-      cargosInternosList.textContent = 'Sem cargos internos.'
+      const msg = String(e?.message || e || '')
+      if (msg.includes('row-level security policy') && msg.includes('cargos_internos')) {
+        cargosInternosList.textContent = 'Sem permissão para listar cargos internos (RLS em "cargos_internos").'
+      } else {
+        cargosInternosList.textContent = 'Sem cargos internos.'
+      }
       cargosInternosUI.clear()
+      showStatus(String(e?.message || e), 'error')
     }
   }
   ensureCargosInternosLoaded().catch(() => {})
