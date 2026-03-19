@@ -325,14 +325,90 @@ function renderMembersScreen(schema, table) {
   cardList.className = 'card'
   const hList = document.createElement('h2')
   hList.textContent = 'Lista de membros'
+  const filtersWrap = document.createElement('div')
+  filtersWrap.className = 'filters'
   const listWrap = document.createElement('div')
   listWrap.className = 'list-items'
+  let filtroNomeInput = null
+  let filtroDataNascInput = null
+  let filtroGruposField = null
+  let filtroMesesField = null
+  let membrosGrupoIndex = null
+  let membrosGrupoIndexError = null
+
+  function normText(s) {
+    const v = String(s ?? '').toLowerCase().trim()
+    try { return v.normalize('NFD').replace(/\p{Diacritic}/gu, '') } catch { return v }
+  }
+  function dateOnly(value) {
+    const s = String(value ?? '')
+    if (!s) return ''
+    if (s.length >= 10) return s.slice(0, 10)
+    return s
+  }
+  function monthFromDate(value) {
+    const d = dateOnly(value)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return String(parseInt(d.slice(5, 7), 10))
+    const dt = new Date(String(value ?? ''))
+    if (!Number.isFinite(dt.getTime())) return ''
+    return String(dt.getMonth() + 1)
+  }
+  function intersectsSet(a, b) {
+    for (const v of a) if (b.has(v)) return true
+    return false
+  }
+  async function ensureMembrosGrupoIndexLoaded() {
+    if (membrosGrupoIndex) return
+    membrosGrupoIndexError = null
+    try {
+      const rows = await apiGet('membros_grupo', { select: 'id_membro,id_grupo' })
+      membrosGrupoIndex = new Map()
+      ;(Array.isArray(rows) ? rows : []).forEach(r => {
+        const mid = String(r?.id_membro ?? '')
+        const gid = String(r?.id_grupo ?? '')
+        if (!mid || !gid) return
+        if (!membrosGrupoIndex.has(mid)) membrosGrupoIndex.set(mid, new Set())
+        membrosGrupoIndex.get(mid).add(gid)
+      })
+    } catch (e) {
+      membrosGrupoIndex = new Map()
+      membrosGrupoIndexError = e
+    }
+  }
   async function refreshList() {
     listWrap.innerHTML = ''
     try {
       const data = await apiList(table.name)
-      console.log('Consulta:list', { count: Array.isArray(data) ? data.length : 0, sample: Array.isArray(data) ? data.slice(0, 3) : data })
-      data.forEach(item => {
+      const nomeQ = filtroNomeInput ? normText(filtroNomeInput.value) : ''
+      const dataNascQ = filtroDataNascInput ? String(filtroDataNascInput.value || '') : ''
+      const mesesQ = new Set(filtroMesesField ? filtroMesesField.getSelected().map(x => String(x)) : [])
+      const gruposQ = new Set(filtroGruposField ? filtroGruposField.getSelected().map(x => String(x)) : [])
+      if (gruposQ.size) await ensureMembrosGrupoIndexLoaded()
+      if (gruposQ.size && membrosGrupoIndexError) {
+        showStatus('Sem permissão para filtrar por grupo (RLS em "membros_grupo").', 'error')
+      }
+
+      const filtered = (Array.isArray(data) ? data : []).filter(item => {
+        if (nomeQ) {
+          const hay = `${item?.nome ?? ''} ${item?.matricula ?? ''}`
+          if (!normText(hay).includes(nomeQ)) return false
+        }
+        const dn = item?.data_nascimento
+        if (dataNascQ && dateOnly(dn) !== dataNascQ) return false
+        if (mesesQ.size) {
+          const m = monthFromDate(dn)
+          if (!m || !mesesQ.has(m)) return false
+        }
+        if (gruposQ.size && !membrosGrupoIndexError) {
+          const mid = String(item?.[table.pk] ?? '')
+          const set = membrosGrupoIndex.get(mid) || new Set()
+          if (!intersectsSet(gruposQ, set)) return false
+        }
+        return true
+      })
+
+      console.log('Consulta:list', { count: Array.isArray(data) ? data.length : 0, filtered: filtered.length })
+      filtered.forEach(item => {
         const div = document.createElement('div')
         div.className = 'list-item'
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
@@ -364,6 +440,7 @@ function renderMembersScreen(schema, table) {
     }
   }
   cardList.appendChild(hList)
+  cardList.appendChild(filtersWrap)
   cardList.appendChild(listWrap)
   panelConsulta.appendChild(cardList)
 
@@ -392,7 +469,7 @@ function renderMembersScreen(schema, table) {
     return 'nome'
   }
 
-  function createChecklistField(labelText) {
+  function createChecklistField(labelText, onChange) {
     const wrap = document.createElement('div')
     wrap.className = 'field'
     const label = document.createElement('label')
@@ -435,6 +512,7 @@ function renderMembersScreen(schema, table) {
           if (cb.checked) selected.add(cb.value)
           else selected.delete(cb.value)
           updateSummary()
+          if (typeof onChange === 'function') onChange()
         }
         const t = document.createElement('span')
         t.textContent = opt.label
@@ -459,6 +537,48 @@ function renderMembersScreen(schema, table) {
   }
 
   const gruposField = createChecklistField('Grupos')
+  filtroNomeInput = document.createElement('input')
+  filtroNomeInput.type = 'text'
+  filtroNomeInput.placeholder = 'Filtrar por nome...'
+  filtroNomeInput.oninput = () => refreshList()
+  const filtroNomeWrap = document.createElement('div')
+  filtroNomeWrap.className = 'field'
+  const filtroNomeLabel = document.createElement('label')
+  filtroNomeLabel.textContent = 'Nome'
+  filtroNomeWrap.appendChild(filtroNomeLabel)
+  filtroNomeWrap.appendChild(filtroNomeInput)
+
+  filtroDataNascInput = document.createElement('input')
+  filtroDataNascInput.type = 'date'
+  filtroDataNascInput.onchange = () => refreshList()
+  const filtroDataWrap = document.createElement('div')
+  filtroDataWrap.className = 'field'
+  const filtroDataLabel = document.createElement('label')
+  filtroDataLabel.textContent = 'Data de nascimento'
+  filtroDataWrap.appendChild(filtroDataLabel)
+  filtroDataWrap.appendChild(filtroDataNascInput)
+
+  filtroGruposField = createChecklistField('Grupo(s)', () => refreshList())
+  filtroMesesField = createChecklistField('Mês de nascimento', () => refreshList())
+  filtroMesesField.setOptions([
+    { value: '1', label: 'Janeiro' },
+    { value: '2', label: 'Fevereiro' },
+    { value: '3', label: 'Março' },
+    { value: '4', label: 'Abril' },
+    { value: '5', label: 'Maio' },
+    { value: '6', label: 'Junho' },
+    { value: '7', label: 'Julho' },
+    { value: '8', label: 'Agosto' },
+    { value: '9', label: 'Setembro' },
+    { value: '10', label: 'Outubro' },
+    { value: '11', label: 'Novembro' },
+    { value: '12', label: 'Dezembro' }
+  ])
+
+  filtersWrap.appendChild(filtroNomeWrap)
+  filtersWrap.appendChild(filtroGruposField.wrap)
+  filtersWrap.appendChild(filtroDataWrap)
+  filtersWrap.appendChild(filtroMesesField.wrap)
 
   const GRUPOS_TABLE = 'grupos'
   const MEMBROS_GRUPO_TABLE = 'membros_grupo'
@@ -476,12 +596,16 @@ function renderMembersScreen(schema, table) {
       const sample = gruposCache[0] || {}
       gruposIdKey = pickKey(sample, ['id', 'grupo_id', 'codigo'])
       gruposLabelKey = guessLabelKey(sample)
-      gruposField.setOptions(gruposCache.map(g => ({ value: g?.[gruposIdKey], label: String(g?.[gruposLabelKey] ?? g?.[gruposIdKey] ?? '') })))
+      const opts = gruposCache.map(g => ({ value: g?.[gruposIdKey], label: String(g?.[gruposLabelKey] ?? g?.[gruposIdKey] ?? '') }))
+      gruposField.setOptions(opts)
+      if (filtroGruposField) filtroGruposField.setOptions(opts)
     } catch {
       gruposCache = []
       gruposField.setOptions([])
+      if (filtroGruposField) filtroGruposField.setOptions([])
     }
   }
+  ensureGruposLoaded().catch(() => {})
 
   async function loadSelectedGruposForMember(memberId) {
     await ensureGruposLoaded()
