@@ -162,6 +162,21 @@ button {
   font-weight: 700;
 }
 button.danger { background: var(--danger); color: white; }
+.icon-btn {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0b1220;
+}
+.icon-btn.danger { color: white; }
+.icon-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
 .grid-actions { display: flex; gap: 6px; }
 .output {
   white-space: pre-wrap;

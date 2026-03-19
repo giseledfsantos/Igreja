@@ -34,6 +34,61 @@ async function apiDelete(table, pk, id) {
 function el(id) { return document.getElementById(id) }
 function txt(el, data) { el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2) }
 
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+function createSvg() {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.setAttribute('focusable', 'false')
+  return svg
+}
+
+function addPath(svg, d) {
+  const p = document.createElementNS(SVG_NS, 'path')
+  p.setAttribute('d', d)
+  svg.appendChild(p)
+}
+
+function iconEdit() {
+  const svg = createSvg()
+  addPath(svg, 'M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7')
+  addPath(svg, 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z')
+  return svg
+}
+
+function iconTrash() {
+  const svg = createSvg()
+  addPath(svg, 'M3 6h18')
+  addPath(svg, 'M8 6V4h8v2')
+  addPath(svg, 'M19 6l-1 14H6L5 6')
+  addPath(svg, 'M10 11v6')
+  addPath(svg, 'M14 11v6')
+  return svg
+}
+
+function iconSave() {
+  const svg = createSvg()
+  addPath(svg, 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z')
+  addPath(svg, 'M17 21v-8H7v8')
+  addPath(svg, 'M7 3v5h8')
+  return svg
+}
+
+const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
+
+function setButtonIcon(button, name) {
+  const factory = ICONS[name]
+  if (!factory) return
+  while (button.firstChild) button.removeChild(button.firstChild)
+  button.appendChild(factory())
+}
+
 async function loadSchema() {
   let configured = { tables: [] }
   try {
@@ -179,7 +234,10 @@ function renderTableScreen(schema, table) {
   const actionsUpdate = document.createElement('div')
   actionsUpdate.className = 'actions'
   const btnUpdate = document.createElement('button')
-  btnUpdate.textContent = 'Atualizar'
+  btnUpdate.title = 'Alterar'
+  btnUpdate.setAttribute('aria-label', 'Alterar')
+  btnUpdate.className = 'icon-btn'
+  setButtonIcon(btnUpdate, 'edit')
   const outUpdate = document.createElement('div')
   outUpdate.className = 'output'
   btnUpdate.onclick = async () => {
@@ -204,8 +262,10 @@ function renderTableScreen(schema, table) {
   const actionsDelete = document.createElement('div')
   actionsDelete.className = 'actions'
   const btnDelete = document.createElement('button')
-  btnDelete.textContent = 'Excluir'
-  btnDelete.className = 'danger'
+  btnDelete.title = 'Excluir'
+  btnDelete.setAttribute('aria-label', 'Excluir')
+  btnDelete.className = 'danger icon-btn'
+  setButtonIcon(btnDelete, 'trash')
   const outDelete = document.createElement('div')
   outDelete.className = 'output'
   btnDelete.onclick = async () => {
@@ -265,12 +325,12 @@ function renderMembersScreen(schema, table) {
         div.className = 'list-item'
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
-        const btnEdit = document.createElement('button'); btnEdit.title = 'Editar'; btnEdit.textContent = 'Editar'
+        const btnEdit = document.createElement('button'); btnEdit.title = 'Alterar'; btnEdit.setAttribute('aria-label', 'Alterar'); btnEdit.className = 'icon-btn'; setButtonIcon(btnEdit, 'edit')
         btnEdit.onclick = () => {
           fillCadastro(item)
           setActiveCadastro()
         }
-        const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.className = 'danger'; btnDelete.textContent = 'Excluir'
+        const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
         btnDelete.onclick = async () => {
           try {
             const id = item[table.pk]
@@ -314,7 +374,10 @@ function renderMembersScreen(schema, table) {
   const actions = document.createElement('div')
   actions.className = 'actions'
   const btnSalvar = document.createElement('button')
-  btnSalvar.textContent = 'Salvar'
+  btnSalvar.title = 'Salvar'
+  btnSalvar.setAttribute('aria-label', 'Salvar')
+  btnSalvar.className = 'icon-btn'
+  setButtonIcon(btnSalvar, 'save')
 
   btnSalvar.onclick = async () => {
     try { 
