@@ -32,21 +32,29 @@ string SUPABASE_KEY = Environment.GetEnvironmentVariable("SUPABASE_KEY") ?? "";
 
 void CopyHeaders(HttpRequest req, HttpRequestMessage msg)
 {
-    if (req.Headers.TryGetValue("apikey", out var apikey))
-        msg.Headers.TryAddWithoutValidation("apikey", apikey.ToString());
-    else if (!string.IsNullOrEmpty(SUPABASE_KEY))
+    if (!string.IsNullOrEmpty(SUPABASE_KEY))
+    {
         msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
-    if (req.Headers.TryGetValue("Authorization", out var auth))
-        msg.Headers.TryAddWithoutValidation("Authorization", auth.ToString());
-    else if (!string.IsNullOrEmpty(SUPABASE_KEY))
         msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    }
+    else
+    {
+        if (req.Headers.TryGetValue("apikey", out var apikey))
+            msg.Headers.TryAddWithoutValidation("apikey", apikey.ToString());
+        if (req.Headers.TryGetValue("Authorization", out var auth))
+            msg.Headers.TryAddWithoutValidation("Authorization", auth.ToString());
+    }
     msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 }
 
 app.MapGet("/api/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
 {
-    var select = req.Query.ContainsKey("select") ? req.Query["select"].ToString() : "*";
-    var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}?select={Uri.EscapeDataString(select)}";
+    var query = req.QueryString.HasValue ? req.QueryString.Value : "";
+    if (string.IsNullOrEmpty(query))
+        query = "?select=*";
+    else if (!req.Query.ContainsKey("select"))
+        query += "&select=*";
+    var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}{query}";
     using var client = new HttpClient();
     var msg = new HttpRequestMessage(HttpMethod.Get, url);
     CopyHeaders(req, msg);

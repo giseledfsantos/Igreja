@@ -3,6 +3,8 @@ const API_KEY = 'sb_publishable_kmvt5bwvVonTji9qWqgjKg_r8oKsCRs'
 
 function headers() {
   return {
+    apikey: API_KEY,
+    Authorization: 'Bearer ' + API_KEY,
     'Content-Type': 'application/json',
     Accept: 'application/json',
     Prefer: 'return=representation'
@@ -13,6 +15,16 @@ function headers() {
 
 async function apiList(table) {
   const res = await fetch(`/api/rest/${encodeURIComponent(table)}?select=*`, { headers: headers() })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+async function apiGet(table, params) {
+  const qs = new URLSearchParams()
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v === undefined || v === null) return
+    qs.set(k, String(v))
+  })
+  const res = await fetch(`/api/rest/${encodeURIComponent(table)}?${qs.toString()}`, { headers: headers() })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
@@ -326,8 +338,8 @@ function renderMembersScreen(schema, table) {
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
         const btnEdit = document.createElement('button'); btnEdit.title = 'Alterar'; btnEdit.setAttribute('aria-label', 'Alterar'); btnEdit.className = 'icon-btn'; setButtonIcon(btnEdit, 'edit')
-        btnEdit.onclick = () => {
-          fillCadastro(item)
+        btnEdit.onclick = async () => {
+          await fillCadastro(item)
           setActiveCadastro()
         }
         const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
@@ -369,6 +381,128 @@ function renderMembersScreen(schema, table) {
   idInput.readOnly = true
   idWrap.appendChild(idLabel); idWrap.appendChild(idInput)
 
+  function pickKey(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+    return keys[0]
+  }
+  function guessLabelKey(obj) {
+    const candidates = ['nome', 'descricao', 'name', 'titulo', 'label']
+    for (const k of candidates) if (obj && Object.prototype.hasOwnProperty.call(obj, k) && typeof obj[k] === 'string') return k
+    for (const k of Object.keys(obj || {})) if (typeof obj?.[k] === 'string') return k
+    return 'nome'
+  }
+
+  function createChecklistField(labelText) {
+    const wrap = document.createElement('div')
+    wrap.className = 'field'
+    const label = document.createElement('label')
+    label.textContent = labelText
+    const details = document.createElement('details')
+    details.className = 'checklist'
+    const summary = document.createElement('summary')
+    summary.textContent = 'Selecionar...'
+    const items = document.createElement('div')
+    items.className = 'checklist-items'
+    details.appendChild(summary)
+    details.appendChild(items)
+    wrap.appendChild(label)
+    wrap.appendChild(details)
+
+    let options = []
+    let selected = new Set()
+
+    function updateSummary() {
+      if (!options.length) { summary.textContent = 'Sem grupos'; return }
+      if (!selected.size) { summary.textContent = 'Selecionar...'; return }
+      const labels = options
+        .filter(o => selected.has(String(o.value)))
+        .map(o => o.label)
+        .slice(0, 3)
+      summary.textContent = labels.join(', ') + (selected.size > 3 ? ` (+${selected.size - 3})` : '')
+    }
+
+    function setOptions(nextOptions) {
+      options = Array.isArray(nextOptions) ? nextOptions : []
+      items.innerHTML = ''
+      options.forEach(opt => {
+        const row = document.createElement('label')
+        row.className = 'checklist-item'
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.value = String(opt.value)
+        cb.checked = selected.has(cb.value)
+        cb.onchange = () => {
+          if (cb.checked) selected.add(cb.value)
+          else selected.delete(cb.value)
+          updateSummary()
+        }
+        const t = document.createElement('span')
+        t.textContent = opt.label
+        row.appendChild(cb)
+        row.appendChild(t)
+        items.appendChild(row)
+      })
+      updateSummary()
+    }
+
+    function setSelected(values) {
+      selected = new Set((values || []).map(v => String(v)))
+      items.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = selected.has(String(cb.value)) })
+      updateSummary()
+    }
+
+    function getSelected() {
+      return Array.from(selected.values())
+    }
+
+    return { wrap, setOptions, setSelected, getSelected }
+  }
+
+  const gruposField = createChecklistField('Grupos')
+
+  const GRUPOS_TABLE = 'grupos'
+  const MEMBROS_GRUPO_TABLE = 'membros_grupo'
+  let gruposCache = null
+  let gruposIdKey = 'id'
+  let gruposLabelKey = 'nome'
+  const membrosGrupoMembroKey = 'id_membro'
+  const membrosGrupoGrupoKey = 'id_grupo'
+
+  async function ensureGruposLoaded() {
+    if (gruposCache) return
+    try {
+      const data = await apiList(GRUPOS_TABLE)
+      gruposCache = Array.isArray(data) ? data : []
+      const sample = gruposCache[0] || {}
+      gruposIdKey = pickKey(sample, ['id', 'grupo_id', 'codigo'])
+      gruposLabelKey = guessLabelKey(sample)
+      gruposField.setOptions(gruposCache.map(g => ({ value: g?.[gruposIdKey], label: String(g?.[gruposLabelKey] ?? g?.[gruposIdKey] ?? '') })))
+    } catch {
+      gruposCache = []
+      gruposField.setOptions([])
+    }
+  }
+
+  async function loadSelectedGruposForMember(memberId) {
+    await ensureGruposLoaded()
+    if (!memberId) { gruposField.setSelected([]); return }
+    const rows = await apiGet(MEMBROS_GRUPO_TABLE, {
+      select: membrosGrupoGrupoKey,
+      [membrosGrupoMembroKey]: `eq.${memberId}`
+    })
+    const selected = (Array.isArray(rows) ? rows : []).map(r => r?.[membrosGrupoGrupoKey])
+    gruposField.setSelected(selected)
+  }
+
+  async function saveMemberGrupos(memberId, selectedGrupoIds) {
+    if (!memberId) return
+    await apiDelete(MEMBROS_GRUPO_TABLE, membrosGrupoMembroKey, memberId)
+    const ids = (selectedGrupoIds || []).map(x => String(x)).filter(Boolean)
+    if (!ids.length) return
+    const payload = ids.map(grupoId => ({ [membrosGrupoMembroKey]: memberId, [membrosGrupoGrupoKey]: grupoId }))
+    await apiCreate(MEMBROS_GRUPO_TABLE, payload)
+  }
+
   const form = document.createElement('div')
   table.fields.forEach(f => form.appendChild(renderField(f)))
   const actions = document.createElement('div')
@@ -378,28 +512,43 @@ function renderMembersScreen(schema, table) {
   btnSalvar.setAttribute('aria-label', 'Salvar')
   btnSalvar.className = 'icon-btn'
   setButtonIcon(btnSalvar, 'save')
+  function friendlyGruposError(e) {
+    const msg = String(e?.message || e || '')
+    if (msg.includes('row-level security policy') && msg.includes('membros_grupo')) {
+      return 'Sem permissão para salvar grupos (RLS do Supabase em "membros_grupo").'
+    }
+    return msg
+  }
 
   btnSalvar.onclick = async () => {
+    btnSalvar.disabled = true
+    showStatus('Salvando...', 'success')
     try { 
       const payload = collectPayload(form)
+      const selectedGrupoIds = gruposField.getSelected()
       if (!idInput.value.trim()) {
         const res = await apiCreate(table.name, payload)
         console.log('Cadastro:salvar:create', { payload, res })
         const created = Array.isArray(res) ? res[0] : res
         idInput.value = created?.[table.pk] ?? ''
+        try { await saveMemberGrupos(idInput.value.trim(), selectedGrupoIds) }
+        catch (e) { console.log('Cadastro:salvar:grupos:error', e); showStatus(friendlyGruposError(e), 'error'); return }
         showStatus('Membro criado', 'success')
       } else {
         const id = idInput.value.trim()
         const res = await apiUpdate(table.name, table.pk, id, payload) 
         console.log('Cadastro:salvar:update', { id, payload, res })
+        try { await saveMemberGrupos(id, selectedGrupoIds) }
+        catch (e) { console.log('Cadastro:salvar:grupos:error', e); showStatus(friendlyGruposError(e), 'error'); return }
         showStatus('Alterações salvas', 'success')
       }
       listWrap.innerHTML = ''
       setActiveConsulta()
     } catch (e) { console.log('Cadastro:salvar:error', e); showStatus(String(e.message || e), 'error') }
+    finally { btnSalvar.disabled = false }
   }
 
-  function fillCadastro(item) {
+  async function fillCadastro(item) {
     idInput.value = item?.[table.pk] ?? ''
     form.querySelectorAll('input,textarea,select').forEach(i => {
       const k = i.dataset.key
@@ -408,6 +557,11 @@ function renderMembersScreen(schema, table) {
       else if (i.tagName === 'SELECT') i.value = v ?? ''
       else i.value = v ?? ''
     })
+    try {
+      await loadSelectedGruposForMember(idInput.value.trim())
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    }
   }
 
   actions.appendChild(btnSalvar)
@@ -415,6 +569,7 @@ function renderMembersScreen(schema, table) {
   cardCad.appendChild(hCad)
   cardCad.appendChild(idWrap)
   cardCad.appendChild(form)
+  cardCad.appendChild(gruposField.wrap)
   cardCad.appendChild(actions)
   panelCadastro.appendChild(cardCad)
 
@@ -429,6 +584,7 @@ function renderMembersScreen(schema, table) {
   function setActiveCadastro() {
     btnCadastro.classList.add('active'); btnConsulta.classList.remove('active')
     panelCadastro.style.display = ''; panelConsulta.style.display = 'none'
+    loadSelectedGruposForMember(idInput.value.trim()).catch(() => {})
   }
   btnConsulta.onclick = setActiveConsulta
   btnCadastro.onclick = setActiveCadastro
