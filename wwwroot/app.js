@@ -115,7 +115,7 @@ function setButtonIcon(button, name) {
 async function loadSchema() {
   let configured = { tables: [] }
   try {
-    const resCfg = await fetch('/schema.json')
+    const resCfg = await fetch('/schema.json?v=2026-03-19-1')
     if (resCfg.ok) configured = await resCfg.json()
   } catch {}
   return configured
