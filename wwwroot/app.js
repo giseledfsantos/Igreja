@@ -131,7 +131,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-19-4'
+const APP_BUILD = '2026-03-19-6'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -390,9 +390,12 @@ function renderMembersScreen(schema, table) {
   let filtroNomeInput = null
   let filtroDataNascInput = null
   let filtroGruposField = null
+  let filtroCargosInternosField = null
   let filtroMesesField = null
   let membrosGrupoIndex = null
   let membrosGrupoIndexError = null
+  let membrosCargosInternosIndex = null
+  let membrosCargosInternosIndexError = null
 
   function normText(s) {
     const v = String(s ?? '').toLowerCase().trim()
@@ -433,6 +436,28 @@ function renderMembersScreen(schema, table) {
       membrosGrupoIndexError = e
     }
   }
+  async function ensureMembrosCargosInternosIndexLoaded() {
+    if (membrosCargosInternosIndex) return
+    membrosCargosInternosIndexError = null
+    try {
+      const rows = await apiGet('membros_cargos_internos', { select: '*' })
+      const list = Array.isArray(rows) ? rows : []
+      const sample = list[0] || {}
+      const membroKey = pickKey(sample, ['id_membro', 'membro_id', 'idMembro'])
+      const cargoKey = pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'id_cargo'])
+      membrosCargosInternosIndex = new Map()
+      list.forEach(r => {
+        const mid = String(r?.[membroKey] ?? '')
+        const cid = String(r?.[cargoKey] ?? '')
+        if (!mid || !cid) return
+        if (!membrosCargosInternosIndex.has(mid)) membrosCargosInternosIndex.set(mid, new Set())
+        membrosCargosInternosIndex.get(mid).add(cid)
+      })
+    } catch (e) {
+      membrosCargosInternosIndex = new Map()
+      membrosCargosInternosIndexError = e
+    }
+  }
   async function refreshList() {
     listWrap.innerHTML = ''
     try {
@@ -441,9 +466,14 @@ function renderMembersScreen(schema, table) {
       const dataNascQ = filtroDataNascInput ? String(filtroDataNascInput.value || '') : ''
       const mesesQ = new Set(filtroMesesField ? filtroMesesField.getSelected().map(x => String(x)) : [])
       const gruposQ = new Set(filtroGruposField ? filtroGruposField.getSelected().map(x => String(x)) : [])
+      const cargosQ = new Set(filtroCargosInternosField ? filtroCargosInternosField.getSelected().map(x => String(x)) : [])
       if (gruposQ.size) await ensureMembrosGrupoIndexLoaded()
       if (gruposQ.size && membrosGrupoIndexError) {
         showStatus('Sem permissão para filtrar por grupo (RLS em "membros_grupo").', 'error')
+      }
+      if (cargosQ.size) await ensureMembrosCargosInternosIndexLoaded()
+      if (cargosQ.size && membrosCargosInternosIndexError) {
+        showStatus('Sem permissão para filtrar por cargo interno (RLS em "membros_cargos_internos").', 'error')
       }
 
       const filtered = (Array.isArray(data) ? data : []).filter(item => {
@@ -461,6 +491,11 @@ function renderMembersScreen(schema, table) {
           const mid = String(item?.[table.pk] ?? '')
           const set = membrosGrupoIndex.get(mid) || new Set()
           if (!intersectsSet(gruposQ, set)) return false
+        }
+        if (cargosQ.size && !membrosCargosInternosIndexError) {
+          const mid = String(item?.[table.pk] ?? '')
+          const set = membrosCargosInternosIndex.get(mid) || new Set()
+          if (!intersectsSet(cargosQ, set)) return false
         }
         return true
       })
@@ -557,7 +592,7 @@ function renderMembersScreen(schema, table) {
     let disabled = false
 
     function updateSummary() {
-      if (!options.length) { summary.textContent = 'Sem grupos'; return }
+      if (!options.length) { summary.textContent = 'Sem opções'; return }
       if (!selected.size) { summary.textContent = 'Selecionar...'; return }
       const labels = options
         .filter(o => selected.has(String(o.value)))
@@ -644,6 +679,7 @@ function renderMembersScreen(schema, table) {
   filtroDataWrap.appendChild(filtroDataNascInput)
 
   filtroGruposField = createChecklistField('Grupo(s)', () => refreshList())
+  filtroCargosInternosField = createChecklistField('Cargo(s) interno(s)', () => refreshList())
   filtroMesesField = createChecklistField('Mês de nascimento', () => refreshList())
   filtroMesesField.setOptions([
     { value: '1', label: 'Janeiro' },
@@ -662,6 +698,7 @@ function renderMembersScreen(schema, table) {
 
   filtersWrap.appendChild(filtroNomeWrap)
   filtersWrap.appendChild(filtroGruposField.wrap)
+  filtersWrap.appendChild(filtroCargosInternosField.wrap)
   filtersWrap.appendChild(filtroDataWrap)
   filtersWrap.appendChild(filtroMesesField.wrap)
 
@@ -703,7 +740,16 @@ function renderMembersScreen(schema, table) {
   ensureGruposLoaded().catch(() => {})
 
   async function ensureCargosInternosLoaded() {
-    if (cargosInternosCache) return
+    if (cargosInternosCache) {
+      if (filtroCargosInternosField) {
+        const opts = cargosInternosCache.map(c => ({
+          value: c?.[cargosInternosIdKey],
+          label: String(c?.[cargosInternosLabelKey] ?? c?.[cargosInternosIdKey] ?? '')
+        }))
+        filtroCargosInternosField.setOptions(opts)
+      }
+      return
+    }
     try {
       await ensureGruposLoaded()
       const data = await apiList(CARGOS_INTERNOS_TABLE)
@@ -713,6 +759,13 @@ function renderMembersScreen(schema, table) {
       cargosInternosIdKey = pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'id', 'codigo'])
       cargosInternosLabelKey = guessLabelKey(sample)
       cargosInternosPorGrupoKey = Object.prototype.hasOwnProperty.call(sample, 'por_grupo') ? 'por_grupo' : (Object.prototype.hasOwnProperty.call(sample, 'porGrupo') ? 'porGrupo' : 'por_grupo')
+      if (filtroCargosInternosField) {
+        const opts = cargosInternosCache.map(c => ({
+          value: c?.[cargosInternosIdKey],
+          label: String(c?.[cargosInternosLabelKey] ?? c?.[cargosInternosIdKey] ?? '')
+        }))
+        filtroCargosInternosField.setOptions(opts)
+      }
       const groupOptions = gruposCache
         ? gruposCache.map(g => ({ value: g?.[gruposIdKey], label: String(g?.[gruposLabelKey] ?? g?.[gruposIdKey] ?? '') }))
         : []
@@ -760,6 +813,7 @@ function renderMembersScreen(schema, table) {
     } catch (e) {
       console.log('CargosInternos:load:error', e)
       cargosInternosCache = []
+      if (filtroCargosInternosField) filtroCargosInternosField.setOptions([])
       const msg = String(e?.message || e || '')
       if (msg.includes('row-level security policy') && msg.includes('cargos_internos')) {
         cargosInternosList.textContent = 'Sem permissão para listar cargos internos (RLS em "cargos_internos").'
