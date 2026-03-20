@@ -131,7 +131,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-19-3'
+const APP_BUILD = '2026-03-19-4'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -480,12 +480,12 @@ function renderMembersScreen(schema, table) {
         const div = document.createElement('div')
         div.className = 'list-item'
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
-        const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
-        const btnEdit = document.createElement('button'); btnEdit.title = 'Alterar'; btnEdit.setAttribute('aria-label', 'Alterar'); btnEdit.className = 'icon-btn'; setButtonIcon(btnEdit, 'edit')
-        btnEdit.onclick = async () => {
+        title.style.cursor = 'pointer'
+        title.onclick = async () => {
           await fillCadastro(item)
           setActiveCadastro()
         }
+        const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
         const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
         btnDelete.onclick = async () => {
           try {
@@ -497,7 +497,6 @@ function renderMembersScreen(schema, table) {
             showStatus(String(e.message || e), 'error')
           }
         }
-        actionsDiv.appendChild(btnEdit)
         actionsDiv.appendChild(btnDelete)
         div.appendChild(title)
         div.appendChild(actionsDiv)
@@ -555,6 +554,7 @@ function renderMembersScreen(schema, table) {
 
     let options = []
     let selected = new Set()
+    let disabled = false
 
     function updateSummary() {
       if (!options.length) { summary.textContent = 'Sem grupos'; return }
@@ -574,6 +574,7 @@ function renderMembersScreen(schema, table) {
         row.className = 'checklist-item'
         const cb = document.createElement('input')
         cb.type = 'checkbox'
+        cb.disabled = disabled
         cb.value = String(opt.value)
         cb.checked = selected.has(cb.value)
         cb.onchange = () => {
@@ -601,7 +602,15 @@ function renderMembersScreen(schema, table) {
       return Array.from(selected.values())
     }
 
-    return { wrap, setOptions, setSelected, getSelected }
+    function setDisabled(nextDisabled) {
+      disabled = !!nextDisabled
+      items.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.disabled = disabled })
+      summary.style.pointerEvents = disabled ? 'none' : ''
+      details.style.opacity = disabled ? '0.7' : ''
+      if (disabled) details.open = false
+    }
+
+    return { wrap, setOptions, setSelected, getSelected, setDisabled }
   }
 
   const gruposField = createChecklistField('Grupos')
@@ -895,6 +904,12 @@ function renderMembersScreen(schema, table) {
   table.fields.forEach(f => form.appendChild(renderField(f)))
   const actions = document.createElement('div')
   actions.className = 'actions'
+  let cadastroEditMode = true
+  const btnAlterar = document.createElement('button')
+  btnAlterar.title = 'Alterar'
+  btnAlterar.setAttribute('aria-label', 'Alterar')
+  btnAlterar.className = 'icon-btn'
+  setButtonIcon(btnAlterar, 'edit')
   const btnSalvar = document.createElement('button')
   btnSalvar.title = 'Salvar'
   btnSalvar.setAttribute('aria-label', 'Salvar')
@@ -930,6 +945,29 @@ function renderMembersScreen(schema, table) {
     }
     return msg
   }
+
+  function setCadastroMode(edit) {
+    cadastroEditMode = !!edit
+    form.querySelectorAll('input,textarea,select').forEach(i => {
+      i.disabled = !cadastroEditMode
+    })
+    gruposField.setDisabled(!cadastroEditMode)
+    cargosInternosUI.forEach(ui => {
+      ui.cb.disabled = !cadastroEditMode
+      if (ui.porGrupo && ui.gruposPorCargoField && typeof ui.gruposPorCargoField.setDisabled === 'function') {
+        ui.gruposPorCargoField.setDisabled(!cadastroEditMode)
+      }
+    })
+    const hasId = !!idInput.value.trim()
+    btnAlterar.style.display = !cadastroEditMode && hasId ? '' : 'none'
+    btnSalvar.disabled = !cadastroEditMode && hasId
+  }
+
+  btnAlterar.onclick = () => {
+    setCadastroMode(true)
+    const first = form.querySelector('input:not([type="hidden"]),select,textarea')
+    if (first && typeof first.focus === 'function') first.focus()
+  }
   function hasEmptyNumericInputError(e) {
     const msg = String(e?.message || e || '')
     const normalized = msg.replaceAll('\\"', '"')
@@ -960,6 +998,7 @@ function renderMembersScreen(schema, table) {
   }
 
   btnSalvar.onclick = async () => {
+    if (!cadastroEditMode && idInput.value.trim()) return
     btnSalvar.disabled = true
     showStatus('Salvando...', 'success')
     try { 
@@ -989,7 +1028,7 @@ function renderMembersScreen(schema, table) {
       listWrap.innerHTML = ''
       setActiveConsulta()
     } catch (e) { console.log('Cadastro:salvar:error', e); showStatus(friendlySalvarError(e), 'error') }
-    finally { btnSalvar.disabled = false }
+    finally { setCadastroMode(cadastroEditMode) }
   }
 
   async function fillCadastro(item) {
@@ -1007,8 +1046,10 @@ function renderMembersScreen(schema, table) {
     } catch (e) {
       showStatus(String(e?.message || e), 'error')
     }
+    setCadastroMode(false)
   }
 
+  actions.appendChild(btnAlterar)
   actions.appendChild(btnSalvar)
 
   cardCad.appendChild(hCad)
@@ -1030,6 +1071,7 @@ function renderMembersScreen(schema, table) {
   function setActiveCadastro() {
     btnCadastro.classList.add('active'); btnConsulta.classList.remove('active')
     panelCadastro.style.display = ''; panelConsulta.style.display = 'none'
+    setCadastroMode(!idInput.value.trim())
     loadSelectedGruposForMember(idInput.value.trim()).catch(() => {})
     loadSelectedCargosInternosForMember(idInput.value.trim()).catch(() => {})
   }
