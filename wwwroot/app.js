@@ -131,7 +131,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-19-6'
+const APP_BUILD = '2026-03-20-1'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -521,12 +521,26 @@ function renderMembersScreen(schema, table) {
           setActiveCadastro()
         }
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
-        const btnDelete = document.createElement('button'); btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
-        btnDelete.onclick = async () => {
+        const btnDelete = document.createElement('button'); btnDelete.type = 'button'; btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
+        btnDelete.onclick = async (ev) => {
+          try { ev?.stopPropagation?.() } catch {}
           try {
-            const id = item[table.pk]
+            const id = String(item?.[table.pk] ?? '').trim()
+            const nome = String(item?.nome ?? '').trim()
+            if (!id) { showStatus('ID do membro não encontrado.', 'error'); return }
+            const ok = window.confirm(`Confirmar exclusão do membro "${nome || id}"?`)
+            if (!ok) return
+            showStatus('Excluindo...', 'success')
+
+            try {
+              await apiDeleteWhere(MEMBROS_CARGOS_INTERNOS_TABLE, { [membrosCargosInternosMembroKey]: `eq.${id}` })
+            } catch {}
+            try {
+              await apiDeleteWhere(MEMBROS_GRUPO_TABLE, { [membrosGrupoMembroKey]: `eq.${id}` })
+            } catch {}
+
             await apiDelete(table.name, table.pk, id)
-            showStatus('Excluído', 'success')
+            showStatus(`Excluído: ${nome || id}`, 'success')
             refreshList()
           } catch (e) {
             showStatus(String(e.message || e), 'error')
@@ -1149,7 +1163,8 @@ function activateTab(name) {
 window.addEventListener('DOMContentLoaded', async () => {
   try {
     const h1 = document.querySelector('.app-header h1')
-    if (h1) h1.textContent = `Cadastros (${APP_BUILD})`
+    if (h1) h1.textContent = 'IEADM-ITAPEVA'
+    document.title = 'IEADM-ITAPEVA'
     document.documentElement.dataset.build = APP_BUILD
     console.log('APP_BUILD', APP_BUILD)
   } catch {}
