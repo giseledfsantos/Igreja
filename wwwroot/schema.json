@@ -60,6 +60,12 @@
         { "key": "data_cadastro", "label": "Data de Cadastro", "type": "datetime-local" },
         { "key": "observacoes", "label": "Observações", "type": "textarea" }
       ]
+    },
+    {
+      "name": "ebd",
+      "label": "EBD",
+      "pk": "id",
+      "fields": []
     }
   ]
 }

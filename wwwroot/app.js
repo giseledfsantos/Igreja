@@ -47,7 +47,16 @@ async function apiGet(table, params) {
   const qs = new URLSearchParams()
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v === undefined || v === null) return
-    qs.set(k, String(v))
+    if (Array.isArray(v)) {
+      v.forEach(x => {
+        if (x === undefined || x === null) return
+        if (qs.has(k)) qs.append(k, String(x))
+        else qs.set(k, String(x))
+      })
+      return
+    }
+    if (qs.has(k)) qs.append(k, String(v))
+    else qs.set(k, String(v))
   })
   const q = `/${encodeURIComponent(table)}?${qs.toString()}`
   const res = await apiFetch(q, { headers: headers() })
@@ -73,7 +82,16 @@ async function apiDeleteWhere(table, params) {
   const qs = new URLSearchParams()
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v === undefined || v === null) return
-    qs.set(k, String(v))
+    if (Array.isArray(v)) {
+      v.forEach(x => {
+        if (x === undefined || x === null) return
+        if (qs.has(k)) qs.append(k, String(x))
+        else qs.set(k, String(x))
+      })
+      return
+    }
+    if (qs.has(k)) qs.append(k, String(v))
+    else qs.set(k, String(v))
   })
   const q = qs.toString()
   if (!q) throw new Error('DELETE requires filters')
@@ -131,7 +149,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-23-1'
+const APP_BUILD = '2026-03-23-9'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -237,6 +255,9 @@ function renderTableScreen(schema, table) {
   clear(screens)
   if (String(table.name).toLowerCase() === 'membros') {
     return renderMembersScreen(schema, table)
+  }
+  if (String(table.name).toLowerCase() === 'ebd') {
+    return renderEbdScreen(schema, table)
   }
   const cardList = document.createElement('section')
   cardList.className = 'card'
@@ -1158,6 +1179,397 @@ function renderMembersScreen(schema, table) {
   btnConsulta.onclick = setActiveConsulta
   btnCadastro.onclick = setActiveCadastro
   setActiveConsulta()
+}
+
+function renderEbdScreen(schema, table) {
+  const screens = el('screens')
+  clear(screens)
+  const status = document.createElement('div')
+  status.className = 'status'
+  screens.appendChild(status)
+  let statusTimer = null
+  function showStatus(text, type) {
+    status.textContent = text
+    status.classList.remove('success', 'error')
+    if (type === 'success') status.classList.add('success')
+    if (type === 'error') status.classList.add('error')
+    status.style.display = ''
+    if (statusTimer) clearTimeout(statusTimer)
+    if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+
+  const card = document.createElement('section')
+  card.className = 'card'
+  const h = document.createElement('h2')
+  h.textContent = 'EBD - 2026'
+  card.appendChild(h)
+
+  const wrap = document.createElement('div')
+  wrap.className = 'ebd-wrap'
+  const tableEl = document.createElement('table')
+  tableEl.className = 'ebd-table'
+  wrap.appendChild(tableEl)
+  card.appendChild(wrap)
+  screens.appendChild(card)
+
+  const MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
+  function pad2(n) { return String(n).padStart(2, '0') }
+  function isoDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+  function dateOnly(v) {
+    const s = String(v ?? '').trim()
+    if (!s) return ''
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+    return s
+  }
+  function getSundays(year) {
+    const d = new Date(year, 0, 1)
+    while (d.getDay() !== 0) d.setDate(d.getDate() + 1)
+    const out = []
+    while (d.getFullYear() === year) {
+      out.push(new Date(d.getTime()))
+      d.setDate(d.getDate() + 7)
+    }
+    return out
+  }
+  function pickKey(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+    return keys[0]
+  }
+  function guessLabelKey(obj) {
+    const candidates = ['nome', 'descricao', 'name', 'titulo', 'label']
+    for (const k of candidates) if (obj && Object.prototype.hasOwnProperty.call(obj, k) && typeof obj[k] === 'string') return k
+    for (const k of Object.keys(obj || {})) if (typeof obj?.[k] === 'string') return k
+    return 'nome'
+  }
+
+  const year = 2026
+  const todayIso = isoDate(new Date())
+  const sundays = getSundays(year).map(d => ({ d, iso: isoDate(d), month: d.getMonth(), day: d.getDate() }))
+  const sundayIsosToDate = sundays.filter(x => x.iso <= todayIso).map(x => x.iso)
+  const denomToDate = sundayIsosToDate.length
+
+  const EBD_TURMAS_TABLE = 'ebd_turmas'
+  const EBD_TURMAS_MEMBROS_TABLE = 'ebd_turmas_membros'
+  const EBD_PRESENCA_MEMBROS_TABLE = 'ebd_presenca_membros'
+  let turmasCache = []
+  let turmasIdKey = 'id'
+  let turmasLabelKey = 'nome'
+  let turmasMembrosMembroKey = 'id_membro'
+  let turmasMembrosTurmaKey = 'id_turma'
+  let presencaMembrosMembroKey = 'id_membro'
+  let presencaMembrosDataKey = 'data'
+  const turmasByMembro = new Map()
+  const presSet = new Set()
+
+  const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'id_aluno', 'aluno_id', 'idAluno', 'membro']
+  const TURMA_KEYS = ['id_turma', 'turma_id', 'turmas_id', 'idTurma', 'ebd_turma_id', 'id_ebd_turma', 'ebdTurmaId', 'turma']
+  const DATA_KEYS = ['data', 'dia', 'data_aula', 'data_domingo', 'data_presenca', 'dataDomingo', 'dataPresenca']
+
+  function firstExistingKey(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+    return ''
+  }
+  function firstExistingValue(obj, keys) {
+    const k = firstExistingKey(obj, keys)
+    if (!k) return null
+    const v = obj?.[k]
+    if (v === undefined || v === null) return null
+    const s = String(v).trim()
+    return s ? v : null
+  }
+  async function tryDeleteWhere(tableName, filtersList) {
+    let lastErr = null
+    for (const filters of filtersList) {
+      try {
+        await apiDeleteWhere(tableName, filters)
+        return
+      } catch (e) {
+        lastErr = e
+        const msg = String(e?.message || e || '')
+        if (msg.includes('Could not find the') || msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+        throw e
+      }
+    }
+    if (lastErr) throw lastErr
+  }
+  async function tryCreateOne(tableName, payloads) {
+    let lastErr = null
+    for (const p of payloads) {
+      try {
+        await apiCreate(tableName, [p])
+        return
+      } catch (e) {
+        lastErr = e
+        const msg = String(e?.message || e || '')
+        if (msg.includes('Could not find the') || msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+        throw e
+      }
+    }
+    if (lastErr) throw lastErr
+  }
+
+  function freqTextForMember(memberId) {
+    if (!denomToDate) return '0,00%'
+    let present = 0
+    for (const iso of sundayIsosToDate) {
+      if (presSet.has(`${memberId}|${iso}`)) present += 1
+    }
+    const pct = (present / denomToDate) * 100
+    return `${pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+  }
+
+  function buildHeader() {
+    const thead = document.createElement('thead')
+    const rowMonth = document.createElement('tr')
+    const rowDay = document.createElement('tr')
+
+    const thNome = document.createElement('th')
+    thNome.textContent = 'Nome'
+    thNome.className = 'ebd-sticky ebd-sticky-1'
+    thNome.rowSpan = 2
+
+    const thTurma = document.createElement('th')
+    thTurma.textContent = 'Turma'
+    thTurma.className = 'ebd-sticky ebd-sticky-2'
+    thTurma.rowSpan = 2
+
+    const thFreq = document.createElement('th')
+    thFreq.textContent = '%FREQ'
+    thFreq.rowSpan = 2
+
+    rowMonth.appendChild(thNome)
+    rowMonth.appendChild(thTurma)
+
+    let i = 0
+    while (i < sundays.length) {
+      const month = sundays[i].month
+      let j = i
+      while (j < sundays.length && sundays[j].month === month) j += 1
+      const th = document.createElement('th')
+      th.textContent = MONTHS[month]
+      th.colSpan = j - i
+      rowMonth.appendChild(th)
+      i = j
+    }
+    rowMonth.appendChild(thFreq)
+
+    sundays.forEach(s => {
+      const th = document.createElement('th')
+      th.textContent = String(s.day)
+      rowDay.appendChild(th)
+    })
+    thead.appendChild(rowMonth)
+    thead.appendChild(rowDay)
+    return thead
+  }
+
+  function applyStickyOffsets() {
+    const firstEls = Array.from(tableEl.querySelectorAll('.ebd-sticky-1'))
+    if (!firstEls.length) return
+    const firstWidth = Math.ceil(Math.max(...firstEls.map(x => x.getBoundingClientRect().width || 0), 0))
+    tableEl.querySelectorAll('.ebd-sticky-2').forEach(el => {
+      el.style.left = `${firstWidth}px`
+    })
+    const headRow1 = tableEl.querySelector('thead tr')
+    if (headRow1) {
+      const h = Math.ceil(headRow1.getBoundingClientRect().height || 0)
+      tableEl.style.setProperty('--ebd-head1', `${h}px`)
+    }
+  }
+
+  async function load() {
+    showStatus('Carregando...', 'success')
+    let membros = []
+    try {
+      const rows = await apiGet('membros', { select: 'id,nome' })
+      membros = (Array.isArray(rows) ? rows : [])
+        .map(r => ({ id: String(r?.id ?? '').trim(), nome: String(r?.nome ?? '').trim() }))
+        .filter(x => x.id && x.nome)
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+      membros = []
+    }
+
+    const turmaOptions = [{ value: '', label: '' }]
+    try {
+      const rows = await apiList(EBD_TURMAS_TABLE)
+      turmasCache = Array.isArray(rows) ? rows : []
+      const sample = turmasCache[0] || {}
+      turmasIdKey = pickKey(sample, ['id', 'turma_id', 'codigo'])
+      turmasLabelKey = guessLabelKey(sample)
+      turmasCache.forEach(t => {
+        const v = t?.[turmasIdKey]
+        const l = String(t?.[turmasLabelKey] ?? v ?? '')
+        if (v === undefined || v === null || String(v) === '') return
+        turmaOptions.push({ value: String(v), label: l })
+      })
+    } catch (e) {
+      turmasCache = []
+      showStatus(String(e?.message || e), 'error')
+    }
+
+    turmasByMembro.clear()
+    try {
+      const rows = await apiGet(EBD_TURMAS_MEMBROS_TABLE, { select: '*' })
+      const list = Array.isArray(rows) ? rows : []
+      list.forEach(r => {
+        const midVal = firstExistingValue(r, MEMBRO_KEYS)
+        const tidVal = firstExistingValue(r, TURMA_KEYS)
+        const mid = midVal === null ? '' : String(midVal).trim()
+        const tid = tidVal === null ? '' : String(tidVal).trim()
+        if (!mid || !tid) return
+        if (!turmasByMembro.has(mid)) turmasByMembro.set(mid, tid)
+        const mk = firstExistingKey(r, MEMBRO_KEYS)
+        const tk = firstExistingKey(r, TURMA_KEYS)
+        if (mk) turmasMembrosMembroKey = mk
+        if (tk) turmasMembrosTurmaKey = tk
+      })
+    } catch (e) {
+      turmasByMembro.clear()
+      showStatus(String(e?.message || e), 'error')
+    }
+
+    presSet.clear()
+    try {
+      const rows = await apiGet(EBD_PRESENCA_MEMBROS_TABLE, { select: '*' })
+      const list = Array.isArray(rows) ? rows : []
+      list.forEach(r => {
+        const midVal = firstExistingValue(r, MEMBRO_KEYS)
+        const dtVal = firstExistingValue(r, DATA_KEYS)
+        const mid = midVal === null ? '' : String(midVal).trim()
+        const dt = dateOnly(dtVal === null ? '' : String(dtVal).trim())
+        if (!mid || !dt) return
+        if (!dt.startsWith(`${year}-`)) return
+        presSet.add(`${mid}|${dt}`)
+        const mk = firstExistingKey(r, MEMBRO_KEYS)
+        const dk = firstExistingKey(r, DATA_KEYS)
+        if (mk) presencaMembrosMembroKey = mk
+        if (dk) presencaMembrosDataKey = dk
+      })
+    } catch (e) {
+      presSet.clear()
+      showStatus(String(e?.message || e), 'error')
+    }
+
+    tableEl.innerHTML = ''
+    tableEl.appendChild(buildHeader())
+    const tbody = document.createElement('tbody')
+    const frag = document.createDocumentFragment()
+    const freqCells = new Map()
+
+    membros.forEach(m => {
+      const tr = document.createElement('tr')
+
+      const tdNome = document.createElement('td')
+      tdNome.textContent = m.nome
+      tdNome.className = 'ebd-sticky ebd-sticky-1'
+      tr.appendChild(tdNome)
+
+      const tdTurma = document.createElement('td')
+      tdTurma.className = 'ebd-sticky ebd-sticky-2'
+      const sel = document.createElement('select')
+      sel.className = 'ebd-turma'
+      turmaOptions.forEach(o => {
+        const opt = document.createElement('option')
+        opt.value = o.value
+        opt.textContent = o.label
+        sel.appendChild(opt)
+      })
+      sel.value = String(turmasByMembro.get(m.id) ?? '')
+      sel.onchange = async () => {
+        const desiredTurmaId = String(sel.value ?? '').trim()
+        const membroVal = /^\d+$/.test(String(m.id)) ? Number(m.id) : m.id
+        try {
+          await tryDeleteWhere(EBD_TURMAS_MEMBROS_TABLE, MEMBRO_KEYS.map(k => ({ [k]: `eq.${m.id}` })))
+          if (desiredTurmaId) {
+            const turmaVal = /^\d+$/.test(desiredTurmaId) ? Number(desiredTurmaId) : desiredTurmaId
+            const payloads = []
+            payloads.push({ [turmasMembrosMembroKey]: membroVal, [turmasMembrosTurmaKey]: turmaVal })
+            MEMBRO_KEYS.forEach(mk => TURMA_KEYS.forEach(tk => payloads.push({ [mk]: membroVal, [tk]: turmaVal })))
+            await tryCreateOne(EBD_TURMAS_MEMBROS_TABLE, payloads)
+            turmasByMembro.set(m.id, desiredTurmaId)
+          } else {
+            turmasByMembro.delete(m.id)
+          }
+        } catch (e) {
+          showStatus(String(e?.message || e), 'error')
+          sel.value = String(turmasByMembro.get(m.id) ?? '')
+        }
+      }
+      tdTurma.appendChild(sel)
+      tr.appendChild(tdTurma)
+
+      sundays.forEach(s => {
+        const td = document.createElement('td')
+        td.className = 'ebd-cell'
+        const k = `${m.id}|${s.iso}`
+        const present = presSet.has(k)
+        if (present) {
+          td.textContent = 'P'
+          td.classList.add('present')
+        } else {
+          td.textContent = ''
+        }
+        td.onclick = async () => {
+          const membroVal = /^\d+$/.test(String(m.id)) ? Number(m.id) : m.id
+          const wasPresent = presSet.has(k)
+          if (wasPresent) {
+            presSet.delete(k)
+            td.textContent = ''
+            td.classList.remove('present')
+          } else {
+            presSet.add(k)
+            td.textContent = 'P'
+            td.classList.add('present')
+          }
+          const fc0 = freqCells.get(m.id)
+          if (fc0) fc0.textContent = freqTextForMember(m.id)
+          try {
+            if (wasPresent) {
+              await tryDeleteWhere(EBD_PRESENCA_MEMBROS_TABLE, DATA_KEYS.flatMap(dk => MEMBRO_KEYS.map(mk => ({ [mk]: `eq.${m.id}`, [dk]: `eq.${s.iso}` }))))
+            } else {
+              const payloads = []
+              payloads.push({ [presencaMembrosMembroKey]: membroVal, [presencaMembrosDataKey]: s.iso })
+              MEMBRO_KEYS.forEach(mk => DATA_KEYS.forEach(dk => payloads.push({ [mk]: membroVal, [dk]: s.iso })))
+              await tryCreateOne(EBD_PRESENCA_MEMBROS_TABLE, payloads)
+            }
+            const fc = freqCells.get(m.id)
+            if (fc) fc.textContent = freqTextForMember(m.id)
+          } catch (e) {
+            showStatus(String(e?.message || e), 'error')
+            if (wasPresent) {
+              presSet.add(k)
+              td.textContent = 'P'
+              td.classList.add('present')
+            } else {
+              presSet.delete(k)
+              td.textContent = ''
+              td.classList.remove('present')
+            }
+            const fc = freqCells.get(m.id)
+            if (fc) fc.textContent = freqTextForMember(m.id)
+          }
+        }
+        tr.appendChild(td)
+      })
+
+      const tdFreq = document.createElement('td')
+      tdFreq.textContent = freqTextForMember(m.id)
+      tdFreq.className = 'ebd-freq'
+      tr.appendChild(tdFreq)
+      freqCells.set(m.id, tdFreq)
+
+      frag.appendChild(tr)
+    })
+    tbody.appendChild(frag)
+    tableEl.appendChild(tbody)
+    applyStickyOffsets()
+    showStatus('Pronto.', 'success')
+  }
+
+  window.addEventListener('resize', applyStickyOffsets)
+  load().catch(e => showStatus(String(e?.message || e), 'error'))
 }
 
 

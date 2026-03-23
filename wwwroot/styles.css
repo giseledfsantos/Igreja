@@ -141,7 +141,7 @@ label {
   color: var(--muted);
   margin-bottom: 6px;
 }
-input, textarea {
+input, textarea, select {
   width: 100%;
   border: 1px solid #334155;
   border-radius: 10px;
@@ -150,7 +150,7 @@ input, textarea {
   color: var(--text);
   outline: none;
 }
-input:focus, textarea:focus { border-color: #475569; }
+input:focus, textarea:focus, select:focus { border-color: #475569; }
 .checklist {
   border: 1px solid #334155;
   border-radius: 10px;
@@ -246,4 +246,71 @@ button.danger { background: var(--danger); color: white; }
 @media (min-width: 768px) {
   .container { max-width: 820px; }
   .filters { grid-template-columns: 1fr 1fr; }
+}
+
+.ebd-wrap {
+  overflow: auto;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #0b1220;
+}
+.ebd-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+}
+.ebd-table th, .ebd-table td {
+  border: 1px solid #1f2937;
+  padding: 6px 8px;
+  font-size: 12px;
+  text-align: center;
+  background: #0b1220;
+}
+.ebd-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.ebd-table thead tr:nth-child(2) th {
+  top: var(--ebd-head1, 0px);
+}
+.ebd-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  text-align: left;
+  background: #0b1220;
+  background-clip: padding-box;
+}
+.ebd-sticky-1 {
+  min-width: 240px;
+}
+.ebd-sticky-2 {
+  z-index: 5;
+  min-width: 140px;
+}
+.ebd-turma {
+  width: 120px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.ebd-sticky, .ebd-sticky-2 {
+  box-shadow: 2px 0 0 #1f2937;
+}
+.ebd-table thead .ebd-sticky {
+  z-index: 6;
+}
+.ebd-cell {
+  min-width: 26px;
+  cursor: pointer;
+  user-select: none;
+}
+.ebd-cell.present {
+  background: #86efac;
+  color: #14532d;
+  font-weight: 800;
+}
+.ebd-freq {
+  font-weight: 800;
 }
