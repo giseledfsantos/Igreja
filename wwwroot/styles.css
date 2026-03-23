@@ -311,6 +311,9 @@ button.danger { background: var(--danger); color: white; }
   text-align: center;
   background: #0b1220;
 }
+.ebd-table td.ebd-sticky {
+  text-align: left;
+}
 .ebd-table thead th {
   position: sticky;
   top: 0;

@@ -149,7 +149,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-23-11'
+const APP_BUILD = '2026-03-23-12'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
