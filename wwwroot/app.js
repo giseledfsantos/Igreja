@@ -131,7 +131,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-20-1'
+const APP_BUILD = '2026-03-23-1'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -903,11 +903,15 @@ function renderMembersScreen(schema, table) {
       }
     })
     const existingRows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, {
-      select: `${membrosCargosInternosCargoKey},${membrosCargosInternosGrupoKey}`,
+      select: `${membrosCargosInternosMembroKey},${membrosCargosInternosCargoKey},${membrosCargosInternosGrupoKey}`,
       [membrosCargosInternosMembroKey]: `eq.${memberId}`
     })
     const existing = new Set()
-    ;(Array.isArray(existingRows) ? existingRows : []).forEach(r => {
+    const existingList = Array.isArray(existingRows) ? existingRows : []
+    const filteredExistingList = existingList.some(r => String(r?.[membrosCargosInternosMembroKey] ?? '') && String(r?.[membrosCargosInternosMembroKey] ?? '') !== String(memberId))
+      ? existingList.filter(r => String(r?.[membrosCargosInternosMembroKey] ?? '') === String(memberId))
+      : existingList
+    filteredExistingList.forEach(r => {
       const cid = String(r?.[membrosCargosInternosCargoKey] ?? '')
       const gid = r?.[membrosCargosInternosGrupoKey]
       if (!cid) return
@@ -938,10 +942,14 @@ function renderMembersScreen(schema, table) {
     await ensureGruposLoaded()
     if (!memberId) { gruposField.setSelected([]); return }
     const rows = await apiGet(MEMBROS_GRUPO_TABLE, {
-      select: membrosGrupoGrupoKey,
+      select: `${membrosGrupoMembroKey},${membrosGrupoGrupoKey}`,
       [membrosGrupoMembroKey]: `eq.${memberId}`
     })
-    const selected = (Array.isArray(rows) ? rows : []).map(r => r?.[membrosGrupoGrupoKey])
+    const list = Array.isArray(rows) ? rows : []
+    const filtered = list.some(r => String(r?.[membrosGrupoMembroKey] ?? '') && String(r?.[membrosGrupoMembroKey] ?? '') !== String(memberId))
+      ? list.filter(r => String(r?.[membrosGrupoMembroKey] ?? '') === String(memberId))
+      : list
+    const selected = filtered.map(r => r?.[membrosGrupoGrupoKey]).filter(x => x !== undefined && x !== null && String(x) !== '')
     gruposField.setSelected(selected)
   }
 
@@ -950,10 +958,14 @@ function renderMembersScreen(schema, table) {
     const ids = (selectedGrupoIds || []).map(x => String(x)).filter(Boolean)
     const desired = new Set(ids)
     const rows = await apiGet(MEMBROS_GRUPO_TABLE, {
-      select: membrosGrupoGrupoKey,
+      select: `${membrosGrupoMembroKey},${membrosGrupoGrupoKey}`,
       [membrosGrupoMembroKey]: `eq.${memberId}`
     })
-    const existing = new Set((Array.isArray(rows) ? rows : []).map(r => String(r?.[membrosGrupoGrupoKey] ?? '')).filter(Boolean))
+    const list = Array.isArray(rows) ? rows : []
+    const filtered = list.some(r => String(r?.[membrosGrupoMembroKey] ?? '') && String(r?.[membrosGrupoMembroKey] ?? '') !== String(memberId))
+      ? list.filter(r => String(r?.[membrosGrupoMembroKey] ?? '') === String(memberId))
+      : list
+    const existing = new Set(filtered.map(r => String(r?.[membrosGrupoGrupoKey] ?? '')).filter(Boolean))
     const toAdd = ids.filter(gid => !existing.has(gid))
     const toRemove = Array.from(existing.values()).filter(gid => !desired.has(gid))
     if (toAdd.length) {
