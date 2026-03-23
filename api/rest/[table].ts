@@ -1,14 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_KEY ?? ''
 
 function ensureEnv() {
   if (!SUPABASE_URL) throw new Error('SUPABASE_URL ausente no ambiente')
   if (!SUPABASE_KEY) throw new Error('SUPABASE_KEY ausente no ambiente')
-}
-
-function getClient() {
-  return createClient(SUPABASE_URL, SUPABASE_KEY)
 }
 
 export default async function handler(req: any, res: any) {
@@ -26,44 +21,52 @@ export default async function handler(req: any, res: any) {
       return
     }
 
-    const supabase = getClient()
+    const qs = new URLSearchParams(urlObj.searchParams)
+    const pk = qs.get('pk')
+    const id = qs.get('id')
+    if (pk && id) {
+      qs.delete('pk')
+      qs.delete('id')
+      qs.set(pk, `eq.${id}`)
+    }
 
-    if (req.method === 'GET') {
-      const select = urlObj.searchParams.get('select') || '*'
-      const { data, error } = await supabase.from(table).select(select)
-      if (error) { res.status(500).json({ error: error.message }); return }
-      res.status(200).json(data ?? [])
+    const targetUrl = new URL(`${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/${encodeURIComponent(table)}`)
+    const q = qs.toString()
+    if (q) targetUrl.search = q
+
+    const method = String(req.method || 'GET').toUpperCase()
+    const headers: Record<string, string> = {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Accept: 'application/json',
+      Prefer: 'return=representation'
+    }
+
+    let body: string | undefined
+    if (method !== 'GET' && method !== 'HEAD') {
+      const payload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {})
+      body = payload
+      headers['Content-Type'] = 'application/json'
+    }
+
+    const upstream = await fetch(targetUrl.toString(), { method, headers, body })
+    const text = await upstream.text()
+    if (!upstream.ok) {
+      res.status(upstream.status).send(text)
       return
     }
 
-    if (req.method === 'POST') {
-      const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
-      const { data, error } = await supabase.from(table).insert(payload).select('*')
-      if (error) { res.status(500).json({ error: error.message }); return }
-      res.status(201).json(Array.isArray(data) ? data : [data])
+    if (!text) {
+      res.status(upstream.status).send('')
       return
     }
 
-    if (req.method === 'PATCH') {
-      const pk = urlObj.searchParams.get('pk') || 'id'
-      const id = urlObj.searchParams.get('id') || ''
-      const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
-      const q = supabase.from(table).update(payload)
-      const { data, error } = id ? q.eq(pk, id).select('*') : q.select('*')
-      if (error) { res.status(500).json({ error: error.message }); return }
-      res.status(200).json(Array.isArray(data) ? data : [data])
-      return
+    try {
+      res.status(upstream.status).json(JSON.parse(text))
+    } catch {
+      res.status(upstream.status).send(text)
     }
-
-    if (req.method === 'DELETE') {
-      const pk = urlObj.searchParams.get('pk') || 'id'
-      const id = urlObj.searchParams.get('id') || ''
-      const q = supabase.from(table).delete()
-      const { error } = id ? q.eq(pk, id) : q
-      if (error) { res.status(500).json({ error: error.message }); return }
-      res.status(204).send('')
-      return
-    }
+    return
 
     res.status(405).json({ error: 'Método não suportado' })
   } catch (err: any) {
