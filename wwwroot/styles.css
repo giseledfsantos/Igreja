@@ -217,6 +217,11 @@ button {
   font-weight: 700;
 }
 button.danger { background: var(--danger); color: white; }
+.btn-secondary {
+  background: #0b1220;
+  color: var(--text);
+  border: 1px solid #334155;
+}
 .icon-btn {
   width: 42px;
   height: 42px;
@@ -246,6 +251,45 @@ button.danger { background: var(--danger); color: white; }
 @media (min-width: 768px) {
   .container { max-width: 820px; }
   .filters { grid-template-columns: 1fr 1fr; }
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  width: min(440px, 100%);
+  background: var(--card);
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+}
+.modal-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: var(--muted);
+}
+.modal-message {
+  white-space: pre-wrap;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.modal-actions button {
+  width: auto;
+  min-width: 110px;
 }
 
 .ebd-wrap {
@@ -286,16 +330,12 @@ button.danger { background: var(--danger); color: white; }
 .ebd-sticky-1 {
   min-width: 240px;
 }
-.ebd-sticky-2 {
-  z-index: 5;
-  min-width: 140px;
-}
 .ebd-turma {
   width: 120px;
   padding: 8px 10px;
   border-radius: 8px;
 }
-.ebd-sticky, .ebd-sticky-2 {
+.ebd-sticky {
   box-shadow: 2px 0 0 #1f2937;
 }
 .ebd-table thead .ebd-sticky {

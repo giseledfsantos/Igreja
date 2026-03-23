@@ -149,13 +149,87 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-23-9'
+const APP_BUILD = '2026-03-23-11'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
   if (!factory) return
   while (button.firstChild) button.removeChild(button.firstChild)
   button.appendChild(factory())
+}
+
+let __confirmModalEls = null
+function confirmModal({ title, message, confirmText, cancelText, danger } = {}) {
+  if (!__confirmModalEls) {
+    const backdrop = document.createElement('div')
+    backdrop.className = 'modal-backdrop'
+    backdrop.setAttribute('role', 'presentation')
+    const dialog = document.createElement('div')
+    dialog.className = 'modal'
+    dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('aria-modal', 'true')
+    const h = document.createElement('h3')
+    h.className = 'modal-title'
+    const p = document.createElement('div')
+    p.className = 'modal-message'
+    const actions = document.createElement('div')
+    actions.className = 'modal-actions'
+    const btnCancel = document.createElement('button')
+    btnCancel.type = 'button'
+    btnCancel.className = 'btn-secondary'
+    const btnOk = document.createElement('button')
+    btnOk.type = 'button'
+    actions.appendChild(btnCancel)
+    actions.appendChild(btnOk)
+    dialog.appendChild(h)
+    dialog.appendChild(p)
+    dialog.appendChild(actions)
+    backdrop.appendChild(dialog)
+    document.body.appendChild(backdrop)
+    __confirmModalEls = { backdrop, dialog, h, p, btnCancel, btnOk, resolve: null, keyHandler: null }
+
+    const close = (val) => {
+      const els = __confirmModalEls
+      if (!els) return
+      els.backdrop.classList.remove('open')
+      if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+      els.keyHandler = null
+      const r = els.resolve
+      els.resolve = null
+      if (r) r(val)
+    }
+
+    __confirmModalEls.btnCancel.onclick = () => close(false)
+    __confirmModalEls.btnOk.onclick = () => close(true)
+    __confirmModalEls.backdrop.onclick = (ev) => {
+      if (ev.target === __confirmModalEls.backdrop) close(false)
+    }
+  }
+
+  const els = __confirmModalEls
+  els.h.textContent = String(title ?? 'Confirmar')
+  els.p.textContent = String(message ?? '')
+  els.btnCancel.textContent = String(cancelText ?? 'Cancelar')
+  els.btnOk.textContent = String(confirmText ?? 'OK')
+  els.btnOk.className = danger ? 'danger' : ''
+
+  els.backdrop.classList.add('open')
+  els.btnCancel.focus()
+  return new Promise(resolve => {
+    els.resolve = resolve
+    els.keyHandler = (ev) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault()
+        const r = els.resolve
+        els.resolve = null
+        els.backdrop.classList.remove('open')
+        if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+        els.keyHandler = null
+        if (r) r(false)
+      }
+    }
+    window.addEventListener('keydown', els.keyHandler)
+  })
 }
 
 async function loadSchema() {
@@ -549,7 +623,13 @@ function renderMembersScreen(schema, table) {
             const id = String(item?.[table.pk] ?? '').trim()
             const nome = String(item?.nome ?? '').trim()
             if (!id) { showStatus('ID do membro não encontrado.', 'error'); return }
-            const ok = window.confirm(`Confirmar exclusão do membro "${nome || id}"?`)
+            const ok = await confirmModal({
+              title: 'Confirmar exclusão',
+              message: `Excluir o membro "${nome || id}"?`,
+              confirmText: 'Excluir',
+              cancelText: 'Cancelar',
+              danger: true
+            })
             if (!ok) return
             showStatus('Excluindo...', 'success')
 
@@ -1330,7 +1410,6 @@ function renderEbdScreen(schema, table) {
 
     const thTurma = document.createElement('th')
     thTurma.textContent = 'Turma'
-    thTurma.className = 'ebd-sticky ebd-sticky-2'
     thTurma.rowSpan = 2
 
     const thFreq = document.createElement('th')
@@ -1467,7 +1546,6 @@ function renderEbdScreen(schema, table) {
       tr.appendChild(tdNome)
 
       const tdTurma = document.createElement('td')
-      tdTurma.className = 'ebd-sticky ebd-sticky-2'
       const sel = document.createElement('select')
       sel.className = 'ebd-turma'
       turmaOptions.forEach(o => {
