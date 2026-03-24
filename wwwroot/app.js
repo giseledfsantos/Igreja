@@ -153,8 +153,24 @@ function iconSave() {
   return svg
 }
 
-const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-23-27'
+function iconEye() {
+  const svg = createSvg()
+  addPath(svg, 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z')
+  addPath(svg, 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z')
+  return svg
+}
+
+function iconEyeOff() {
+  const svg = createSvg()
+  addPath(svg, 'M2 2l20 20')
+  addPath(svg, 'M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.83 21.83 0 0 1-2.16 3.19')
+  addPath(svg, 'M6.61 6.61A21.83 21.83 0 0 0 1 12s4 8 11 8a10.94 10.94 0 0 0 5.33-1.4')
+  addPath(svg, 'M14.12 14.12a3 3 0 0 1-4.24-4.24')
+  return svg
+}
+
+const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
+const APP_BUILD = '2026-03-23-30'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -385,8 +401,17 @@ function changePasswordModal() {
     label1.textContent = 'Nova senha'
     const input1 = document.createElement('input')
     input1.type = 'password'
+    const wrap1 = document.createElement('div')
+    wrap1.className = 'input-with-icon'
+    const btnEye1 = document.createElement('button')
+    btnEye1.type = 'button'
+    btnEye1.className = 'eye-btn'
+    btnEye1.setAttribute('aria-label', 'Mostrar senha')
+    setButtonIcon(btnEye1, 'eye')
+    wrap1.appendChild(input1)
+    wrap1.appendChild(btnEye1)
     field1.appendChild(label1)
-    field1.appendChild(input1)
+    field1.appendChild(wrap1)
 
     const field2 = document.createElement('div')
     field2.className = 'field'
@@ -394,8 +419,17 @@ function changePasswordModal() {
     label2.textContent = 'Confirmar senha'
     const input2 = document.createElement('input')
     input2.type = 'password'
+    const wrap2 = document.createElement('div')
+    wrap2.className = 'input-with-icon'
+    const btnEye2 = document.createElement('button')
+    btnEye2.type = 'button'
+    btnEye2.className = 'eye-btn'
+    btnEye2.setAttribute('aria-label', 'Mostrar senha')
+    setButtonIcon(btnEye2, 'eye')
+    wrap2.appendChild(input2)
+    wrap2.appendChild(btnEye2)
     field2.appendChild(label2)
-    field2.appendChild(input2)
+    field2.appendChild(wrap2)
 
     const err = document.createElement('div')
     err.className = 'status error'
@@ -422,7 +456,21 @@ function changePasswordModal() {
     backdrop.appendChild(dialog)
     document.body.appendChild(backdrop)
 
-    __passwordModalEls = { backdrop, input1, input2, err, btnCancel, btnOk, resolve: null, keyHandler: null }
+    let passVisible = false
+    function setVisible(v) {
+      passVisible = !!v
+      const t = passVisible ? 'text' : 'password'
+      input1.type = t
+      input2.type = t
+      setButtonIcon(btnEye1, passVisible ? 'eyeOff' : 'eye')
+      setButtonIcon(btnEye2, passVisible ? 'eyeOff' : 'eye')
+      btnEye1.setAttribute('aria-label', passVisible ? 'Ocultar senha' : 'Mostrar senha')
+      btnEye2.setAttribute('aria-label', passVisible ? 'Ocultar senha' : 'Mostrar senha')
+    }
+    btnEye1.onclick = () => setVisible(!passVisible)
+    btnEye2.onclick = () => setVisible(!passVisible)
+
+    __passwordModalEls = { backdrop, input1, input2, err, btnCancel, btnOk, setVisible, resolve: null, keyHandler: null }
 
     const close = (val) => {
       const els = __passwordModalEls
@@ -450,6 +498,7 @@ function changePasswordModal() {
   const els = __passwordModalEls
   els.input1.value = ''
   els.input2.value = ''
+  els.setVisible(false)
   els.err.style.display = 'none'
   els.backdrop.classList.add('open')
   els.input1.focus()
@@ -1607,17 +1656,12 @@ function renderLoginScreen(schema, table) {
     const pkKey = firstExistingKey(row, ['id', 'usuario_id', 'usuarios_id']) || 'id'
     const passKey = firstExistingKey(row, PASS_KEYS)
     const userId = String(row?.[pkKey] ?? '').trim()
-    const storedPass = passKey ? String(row?.[passKey] ?? '').trim() : ''
+    let storedPass = passKey ? String(row?.[passKey] ?? '').trim() : ''
     if (!userId) throw new Error('ID do usuário não encontrado.')
-    if (!storedPass) throw new Error('Senha do usuário não configurada.')
-
-    const ok = await verifyPassword(password, storedPass)
-    if (!ok) throw new Error('Senha inválida.')
-
-    const isDefault = await verifyPassword(DEFAULT_PASSWORD, storedPass)
-    if (isDefault) {
+    if (!storedPass) {
+      if (String(password ?? '') !== '') throw new Error('Senha não configurada. Entre com a senha em branco para cadastrar uma nova senha.')
       const newPass = await changePasswordModal()
-      if (!newPass) throw new Error('Senha padrão: é necessário definir uma nova senha.')
+      if (!newPass) throw new Error('É necessário definir uma nova senha.')
       const newHash = await hashPasswordPbkdf2(newPass)
       const payloads = []
       payloads.push({ [passKey || 'senha']: newHash })
@@ -1634,7 +1678,35 @@ function renderLoginScreen(schema, table) {
           throw e
         }
       }
-      if (!updated) throw new Error('Não foi possível atualizar a senha do usuário.')
+      if (!updated) throw new Error('Não foi possível cadastrar a nova senha.')
+      storedPass = newHash
+    } else {
+      const ok = await verifyPassword(password, storedPass)
+      if (!ok) throw new Error('Senha inválida.')
+
+      const isDefault = await verifyPassword(DEFAULT_PASSWORD, storedPass)
+      if (isDefault) {
+        const newPass = await changePasswordModal()
+        if (!newPass) throw new Error('Senha padrão: é necessário definir uma nova senha.')
+        const newHash = await hashPasswordPbkdf2(newPass)
+        const payloads = []
+        payloads.push({ [passKey || 'senha']: newHash })
+        PASS_KEYS.forEach(pk => payloads.push({ [pk]: newHash }))
+        let updated = false
+        for (const p of payloads) {
+          try {
+            await apiUpdate('usuarios', pkKey, userId, p)
+            updated = true
+            break
+          } catch (e) {
+            const msg = String(e?.message || e || '')
+            if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+            throw e
+          }
+        }
+        if (!updated) throw new Error('Não foi possível atualizar a senha do usuário.')
+        storedPass = newHash
+      }
     }
 
     const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'membro']
@@ -1749,8 +1821,25 @@ function renderLoginScreen(schema, table) {
   lPass.textContent = 'Senha'
   const iPass = document.createElement('input')
   iPass.type = 'password'
+  const passWrap = document.createElement('div')
+  passWrap.className = 'input-with-icon'
+  const btnEye = document.createElement('button')
+  btnEye.type = 'button'
+  btnEye.className = 'eye-btn'
+  btnEye.setAttribute('aria-label', 'Mostrar senha')
+  setButtonIcon(btnEye, 'eye')
+  let passVisible = false
+  function setVisible(v) {
+    passVisible = !!v
+    iPass.type = passVisible ? 'text' : 'password'
+    setButtonIcon(btnEye, passVisible ? 'eyeOff' : 'eye')
+    btnEye.setAttribute('aria-label', passVisible ? 'Ocultar senha' : 'Mostrar senha')
+  }
+  btnEye.onclick = () => setVisible(!passVisible)
+  passWrap.appendChild(iPass)
+  passWrap.appendChild(btnEye)
   fPass.appendChild(lPass)
-  fPass.appendChild(iPass)
+  fPass.appendChild(passWrap)
 
   form.appendChild(fUser)
   form.appendChild(fPass)
@@ -1764,7 +1853,7 @@ function renderLoginScreen(schema, table) {
   btn.onclick = async () => {
     const login = String(iUser.value ?? '').trim()
     const pass = String(iPass.value ?? '')
-    if (!login || !pass) { showStatus('Informe usuário e senha.', 'error'); return }
+    if (!login) { showStatus('Informe o usuário.', 'error'); return }
     btn.disabled = true
     showStatus('Validando...', 'success')
     try {
@@ -2192,10 +2281,9 @@ function renderUsuariosScreen(schema, table) {
       const passKeys = [usuariosPassKey, ...PASS_KEYS].filter(Boolean)
       let userId = id
       if (!id) {
-        const passHash = await hashPasswordPbkdf2(DEFAULT_PASSWORD)
         membroKeys.forEach(mk => {
           loginKeys.forEach(lk => {
-            passKeys.forEach(pk => userPayloads.push({ [mk]: membroVal, [lk]: login, [pk]: passHash }))
+            passKeys.forEach(pk => userPayloads.push({ [mk]: membroVal, [lk]: login, [pk]: null }))
           })
         })
         const created = await tryCreateOne(USERS_TABLE, userPayloads)
@@ -2243,7 +2331,7 @@ function renderUsuariosScreen(schema, table) {
       const savedMods = await loadUserModuleIds(membroId)
       if (savedMods.length < selectedMods.length) throw new Error('Não foi possível gravar os módulos do usuário em usuarios_modulos.')
 
-      showStatus(id ? 'Alterações salvas.' : 'Usuário criado com senha padrão 12345.', 'success')
+      showStatus(id ? 'Alterações salvas.' : 'Usuário criado. Defina a senha no primeiro acesso.', 'success')
       setActiveLista()
     } catch (e) {
       const msg = String(e?.message || e || '')

@@ -157,6 +157,31 @@ input, textarea, select {
   outline: none;
 }
 input:focus, textarea:focus, select:focus { border-color: #475569; }
+.input-with-icon {
+  position: relative;
+}
+.input-with-icon input {
+  padding-right: 46px;
+}
+.eye-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+.eye-btn:hover { background: rgba(148, 163, 184, 0.12); }
+.eye-btn:focus { border-color: #475569; }
+.eye-btn svg { width: 18px; height: 18px; display: block; }
 .checklist {
   border: 1px solid #334155;
   border-radius: 10px;
