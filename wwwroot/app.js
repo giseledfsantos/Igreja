@@ -76,7 +76,9 @@ async function apiUpdate(table, pk, id, payload) {
   const proxyQ = `/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`
   const directQ = `/${encodeURIComponent(table)}?${encodeURIComponent(pk)}=eq.${encodeURIComponent(id)}`
   const res = await apiFetch(proxyQ, { method: 'PATCH', headers: headers(), body: JSON.stringify(payload) }, directQ)
-  return res.json()
+  const data = await res.json()
+  if (Array.isArray(data) && data.length === 0) throw new Error('0 rows affected')
+  return data
 }
 async function apiDelete(table, pk, id) {
   const proxyQ = `/${encodeURIComponent(table)}?pk=${encodeURIComponent(pk)}&id=${encodeURIComponent(id)}`
@@ -170,7 +172,7 @@ function iconEyeOff() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
-const APP_BUILD = '2026-03-23-30'
+const APP_BUILD = '2026-03-23-31'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -1667,6 +1669,7 @@ function renderLoginScreen(schema, table) {
       payloads.push({ [passKey || 'senha']: newHash })
       PASS_KEYS.forEach(pk => payloads.push({ [pk]: newHash }))
       let updated = false
+      let noRows = false
       for (const p of payloads) {
         try {
           await apiUpdate('usuarios', pkKey, userId, p)
@@ -1674,11 +1677,15 @@ function renderLoginScreen(schema, table) {
           break
         } catch (e) {
           const msg = String(e?.message || e || '')
+          if (msg.includes('0 rows affected')) { noRows = true; break }
           if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
           throw e
         }
       }
-      if (!updated) throw new Error('Não foi possível cadastrar a nova senha.')
+      if (!updated) {
+        if (noRows) throw new Error('Não foi possível salvar a nova senha (sem permissão/RLS no ambiente).')
+        throw new Error('Não foi possível cadastrar a nova senha.')
+      }
       storedPass = newHash
     } else {
       const ok = await verifyPassword(password, storedPass)
@@ -1693,6 +1700,7 @@ function renderLoginScreen(schema, table) {
         payloads.push({ [passKey || 'senha']: newHash })
         PASS_KEYS.forEach(pk => payloads.push({ [pk]: newHash }))
         let updated = false
+        let noRows = false
         for (const p of payloads) {
           try {
             await apiUpdate('usuarios', pkKey, userId, p)
@@ -1700,11 +1708,15 @@ function renderLoginScreen(schema, table) {
             break
           } catch (e) {
             const msg = String(e?.message || e || '')
+            if (msg.includes('0 rows affected')) { noRows = true; break }
             if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
             throw e
           }
         }
-        if (!updated) throw new Error('Não foi possível atualizar a senha do usuário.')
+        if (!updated) {
+          if (noRows) throw new Error('Não foi possível salvar a nova senha (sem permissão/RLS no ambiente).')
+          throw new Error('Não foi possível atualizar a senha do usuário.')
+        }
         storedPass = newHash
       }
     }
