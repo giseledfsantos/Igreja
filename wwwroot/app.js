@@ -172,7 +172,7 @@ function iconEyeOff() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
-const APP_BUILD = '2026-03-23-33'
+const APP_BUILD = '2026-03-23-34'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -1836,7 +1836,12 @@ function renderLoginScreen(schema, table) {
   lPass.textContent = 'Senha'
   const iPass = document.createElement('input')
   iPass.type = 'password'
-  iPass.autocomplete = 'new-password'
+  iPass.autocomplete = 'off'
+  iPass.setAttribute('autocapitalize', 'none')
+  iPass.setAttribute('autocorrect', 'off')
+  iPass.spellcheck = false
+  iPass.readOnly = true
+  iPass.onfocus = () => { iPass.readOnly = false }
   const passWrap = document.createElement('div')
   passWrap.className = 'input-with-icon'
   const btnEye = document.createElement('button')
@@ -1883,6 +1888,7 @@ function renderLoginScreen(schema, table) {
   actions.appendChild(btn)
   card.appendChild(actions)
   screens.appendChild(card)
+  requestAnimationFrame(() => { try { iPass.value = '' } catch {} })
 }
 
 function renderUsuariosScreen(schema, table) {
