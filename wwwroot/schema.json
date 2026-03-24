@@ -78,6 +78,12 @@
       "label": "Usuários",
       "pk": "id",
       "fields": []
+    },
+    {
+      "name": "circulo_oracao",
+      "label": "Círculo de Oração",
+      "pk": "id",
+      "fields": []
     }
   ]
 }

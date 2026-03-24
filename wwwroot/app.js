@@ -172,7 +172,7 @@ function iconEyeOff() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
-const APP_BUILD = '2026-03-23-35'
+const APP_BUILD = '2026-03-24-02'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -652,6 +652,9 @@ function renderTableScreen(schema, table) {
   }
   if (String(table.name).toLowerCase() === 'usuarios') {
     return renderUsuariosScreen(schema, table)
+  }
+  if (String(table.name).toLowerCase() === 'circulo_oracao') {
+    return renderCirculoOracaoScreen(schema, table)
   }
   const cardList = document.createElement('section')
   cardList.className = 'card'
@@ -2718,6 +2721,352 @@ function renderEbdScreen(schema, table) {
               payloads.push({ [presencaMembrosMembroKey]: membroVal, [presencaMembrosDataKey]: s.iso })
               MEMBRO_KEYS.forEach(mk => DATA_KEYS.forEach(dk => payloads.push({ [mk]: membroVal, [dk]: s.iso })))
               await tryCreateOne(EBD_PRESENCA_MEMBROS_TABLE, payloads)
+            }
+            const fc = freqCells.get(m.id)
+            if (fc) fc.textContent = freqTextForMember(m.id)
+          } catch (e) {
+            showStatus(String(e?.message || e), 'error')
+            if (wasPresent) {
+              presSet.add(k)
+              td.textContent = 'P'
+              td.classList.add('present')
+            } else {
+              presSet.delete(k)
+              td.textContent = ''
+              td.classList.remove('present')
+            }
+            const fc = freqCells.get(m.id)
+            if (fc) fc.textContent = freqTextForMember(m.id)
+          }
+        }
+        tr.appendChild(td)
+      })
+
+      const tdFreq = document.createElement('td')
+      tdFreq.textContent = freqTextForMember(m.id)
+      tdFreq.className = 'ebd-freq'
+      tr.appendChild(tdFreq)
+      freqCells.set(m.id, tdFreq)
+
+      frag.appendChild(tr)
+    })
+    tbody.appendChild(frag)
+    tableEl.appendChild(tbody)
+    applyStickyOffsets()
+    showStatus('Pronto.', 'success')
+  }
+
+  window.addEventListener('resize', applyStickyOffsets)
+  load().catch(e => showStatus(String(e?.message || e), 'error'))
+}
+
+function renderCirculoOracaoScreen(schema, table) {
+  const screens = el('screens')
+  clear(screens)
+
+  const status = document.createElement('div')
+  status.className = 'status'
+  screens.appendChild(status)
+  let statusTimer = null
+  function showStatus(text, type) {
+    status.textContent = text
+    status.classList.remove('success', 'error')
+    if (type === 'success') status.classList.add('success')
+    if (type === 'error') status.classList.add('error')
+    status.style.display = 'block'
+    if (statusTimer) clearTimeout(statusTimer)
+    if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+
+  const nm = normalizeText(table?.name)
+  const ln = normalizeText(table?.label)
+  if (!authState.userId || !authState.allowedNorm || !authState.allowedNorm.size || !(authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln))) {
+    showStatus('Sem permissão para acessar este módulo.', 'error')
+    const card = document.createElement('section')
+    card.className = 'card'
+    const h = document.createElement('h2')
+    h.textContent = table?.label || table?.name || 'Módulo'
+    card.appendChild(h)
+    screens.appendChild(card)
+    return
+  }
+
+  const subtabs = document.createElement('div')
+  subtabs.className = 'subtabs'
+  const btnEnsaios = document.createElement('button')
+  btnEnsaios.className = 'subtab active'
+  btnEnsaios.textContent = 'Ensaios'
+  subtabs.appendChild(btnEnsaios)
+  screens.appendChild(subtabs)
+
+  const panelEnsaios = document.createElement('div')
+  screens.appendChild(panelEnsaios)
+
+  const card = document.createElement('section')
+  card.className = 'card'
+  const h = document.createElement('h2')
+  h.textContent = 'Círculo de Oração - Ensaios'
+  card.appendChild(h)
+
+  const wrap = document.createElement('div')
+  wrap.className = 'ebd-wrap'
+  const tableEl = document.createElement('table')
+  tableEl.className = 'ebd-table'
+  wrap.appendChild(tableEl)
+  card.appendChild(wrap)
+  panelEnsaios.appendChild(card)
+
+  const MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
+  function pad2(n) { return String(n).padStart(2, '0') }
+  function isoDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+  function dateOnly(v) {
+    const s = String(v ?? '').trim()
+    if (!s) return ''
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+    return s
+  }
+  function getMondays(year) {
+    const d = new Date(year, 0, 1)
+    while (d.getDay() !== 1) d.setDate(d.getDate() + 1)
+    const out = []
+    while (d.getFullYear() === year) {
+      out.push(new Date(d.getTime()))
+      d.setDate(d.getDate() + 7)
+    }
+    return out
+  }
+  function pickKey(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+    return keys[0]
+  }
+  function guessLabelKey(obj) {
+    const candidates = ['nome', 'descricao', 'name', 'titulo', 'label']
+    for (const k of candidates) if (obj && Object.prototype.hasOwnProperty.call(obj, k) && typeof obj[k] === 'string') return k
+    for (const k of Object.keys(obj || {})) if (typeof obj?.[k] === 'string') return k
+    return 'nome'
+  }
+  function firstExistingKey(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+    return ''
+  }
+  function firstExistingValue(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return obj[k]
+    return null
+  }
+
+  const year = new Date().getFullYear()
+  const todayIso = isoDate(new Date())
+  const mondays = getMondays(year).map(d => ({ d, iso: isoDate(d), month: d.getMonth(), day: d.getDate() }))
+  const mondayIsosToDate = mondays.filter(x => x.iso <= todayIso).map(x => x.iso)
+  const denomToDate = mondayIsosToDate.length
+
+  const ENSAIOS_PRESENCA_TABLE_PRIMARY = 'ensaios_presenca'
+  const ENSAIOS_PRESENCA_TABLE_FALLBACK = 'ebd_presenca_membros'
+  let presencaTable = ENSAIOS_PRESENCA_TABLE_PRIMARY
+
+  const GRUPOS_TABLE = 'grupos'
+  const MEMBROS_GRUPO_TABLE = 'membros_grupo'
+  const alvoGrupoNorm = normalizeText('circulo de oracao')
+
+  const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'membro']
+  const GRUPO_KEYS = ['id_grupo', 'grupo_id', 'grupos_id', 'idGrupo', 'grupo']
+  const DATA_KEYS = ['data', 'dia', 'data_aula', 'data_evento', 'data_presenca', 'dataPresenca']
+
+  let presencaMembrosMembroKey = 'id_membro'
+  let presencaMembrosDataKey = 'data_presenca'
+  const presSet = new Set()
+
+  function freqTextForMember(memberId) {
+    if (!denomToDate) return '0,00%'
+    let present = 0
+    for (const iso of mondayIsosToDate) {
+      if (presSet.has(`${memberId}|${iso}`)) present += 1
+    }
+    const pct = (present / denomToDate) * 100
+    return `${pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+  }
+
+  function buildHeader() {
+    const thead = document.createElement('thead')
+    const rowMonth = document.createElement('tr')
+    const rowDay = document.createElement('tr')
+
+    const thNome = document.createElement('th')
+    thNome.textContent = 'Nome'
+    thNome.className = 'ebd-sticky ebd-sticky-1'
+    thNome.rowSpan = 2
+
+    const thFreq = document.createElement('th')
+    thFreq.textContent = '%FREQ'
+    thFreq.rowSpan = 2
+
+    rowMonth.appendChild(thNome)
+
+    let i = 0
+    while (i < mondays.length) {
+      const month = mondays[i].month
+      let j = i
+      while (j < mondays.length && mondays[j].month === month) j += 1
+      const th = document.createElement('th')
+      th.textContent = MONTHS[month]
+      th.colSpan = j - i
+      rowMonth.appendChild(th)
+      i = j
+    }
+    rowMonth.appendChild(thFreq)
+
+    mondays.forEach(s => {
+      const th = document.createElement('th')
+      th.textContent = String(s.day)
+      rowDay.appendChild(th)
+    })
+    thead.appendChild(rowMonth)
+    thead.appendChild(rowDay)
+    return thead
+  }
+
+  function applyStickyOffsets() {
+    const headRow1 = tableEl.querySelector('thead tr')
+    if (headRow1) {
+      const h = Math.ceil(headRow1.getBoundingClientRect().height || 0)
+      tableEl.style.setProperty('--ebd-head1', `${h}px`)
+    }
+  }
+
+  async function load() {
+    showStatus('Carregando...', 'success')
+
+    let grupoId = ''
+    try {
+      const rows = await apiList(GRUPOS_TABLE)
+      const grupos = Array.isArray(rows) ? rows : []
+      const sample = grupos[0] || {}
+      const gruposIdKey = pickKey(sample, ['id', 'grupo_id', 'codigo'])
+      const gruposLabelKey = guessLabelKey(sample)
+      const found = grupos.find(g => normalizeText(String(g?.[gruposLabelKey] ?? '')) === alvoGrupoNorm)
+      grupoId = found ? String(found?.[gruposIdKey] ?? '').trim() : ''
+      if (!grupoId) {
+        showStatus('Grupo "Círculo de Oração" não encontrado em "grupos".', 'error')
+      }
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    }
+
+    const membrosPermitidos = new Set()
+    if (grupoId) {
+      try {
+        const rows = await apiGet(MEMBROS_GRUPO_TABLE, { select: '*' })
+        const list = Array.isArray(rows) ? rows : []
+        const sample = list[0] || {}
+        const membroKey = firstExistingKey(sample, MEMBRO_KEYS) || 'id_membro'
+        const grupoKey = firstExistingKey(sample, GRUPO_KEYS) || 'id_grupo'
+        list.forEach(r => {
+          const gid = String(r?.[grupoKey] ?? '').trim()
+          if (!gid || gid !== grupoId) return
+          const mid = String(r?.[membroKey] ?? '').trim()
+          if (mid) membrosPermitidos.add(mid)
+        })
+      } catch (e) {
+        showStatus(String(e?.message || e), 'error')
+      }
+    }
+
+    let membros = []
+    try {
+      const rows = await apiGet('membros', { select: 'id,nome' })
+      membros = (Array.isArray(rows) ? rows : [])
+        .map(r => ({ id: String(r?.id ?? '').trim(), nome: String(r?.nome ?? '').trim() }))
+        .filter(x => x.id && x.nome && (!membrosPermitidos.size || membrosPermitidos.has(x.id)))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+      membros = []
+    }
+
+    presSet.clear()
+    async function loadPresenca(tableName) {
+      const rows = await apiGet(tableName, { select: '*' })
+      const list = Array.isArray(rows) ? rows : []
+      list.forEach(r => {
+        const midVal = firstExistingValue(r, MEMBRO_KEYS)
+        const dtVal = firstExistingValue(r, DATA_KEYS)
+        const mid = midVal === null ? '' : String(midVal).trim()
+        const dt = dateOnly(dtVal === null ? '' : String(dtVal).trim())
+        if (!mid || !dt) return
+        if (!dt.startsWith(`${year}-`)) return
+        if (!membrosPermitidos.size || membrosPermitidos.has(mid)) presSet.add(`${mid}|${dt}`)
+        const mk = firstExistingKey(r, MEMBRO_KEYS)
+        const dk = firstExistingKey(r, DATA_KEYS)
+        if (mk) presencaMembrosMembroKey = mk
+        if (dk) presencaMembrosDataKey = dk
+      })
+    }
+    try {
+      await loadPresenca(ENSAIOS_PRESENCA_TABLE_PRIMARY)
+      presencaTable = ENSAIOS_PRESENCA_TABLE_PRIMARY
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      if (msg.includes('Could not find') || msg.includes('relation') || msg.includes('404')) {
+        try {
+          await loadPresenca(ENSAIOS_PRESENCA_TABLE_FALLBACK)
+          presencaTable = ENSAIOS_PRESENCA_TABLE_FALLBACK
+        } catch (e2) {
+          presSet.clear()
+          showStatus(String(e2?.message || e2), 'error')
+        }
+      } else {
+        presSet.clear()
+        showStatus(String(e?.message || e), 'error')
+      }
+    }
+
+    tableEl.innerHTML = ''
+    tableEl.appendChild(buildHeader())
+    const tbody = document.createElement('tbody')
+    const frag = document.createDocumentFragment()
+    const freqCells = new Map()
+
+    membros.forEach(m => {
+      const tr = document.createElement('tr')
+
+      const tdNome = document.createElement('td')
+      tdNome.textContent = m.nome
+      tdNome.className = 'ebd-sticky ebd-sticky-1'
+      tr.appendChild(tdNome)
+
+      mondays.forEach(s => {
+        const td = document.createElement('td')
+        td.className = 'ebd-cell'
+        const k = `${m.id}|${s.iso}`
+        const present = presSet.has(k)
+        if (present) {
+          td.textContent = 'P'
+          td.classList.add('present')
+        } else {
+          td.textContent = ''
+        }
+        td.onclick = async () => {
+          const membroVal = /^\d+$/.test(String(m.id)) ? Number(m.id) : m.id
+          const wasPresent = presSet.has(k)
+          if (wasPresent) {
+            presSet.delete(k)
+            td.textContent = ''
+            td.classList.remove('present')
+          } else {
+            presSet.add(k)
+            td.textContent = 'P'
+            td.classList.add('present')
+          }
+          const fc0 = freqCells.get(m.id)
+          if (fc0) fc0.textContent = freqTextForMember(m.id)
+          try {
+            if (wasPresent) {
+              await tryDeleteWhere(presencaTable, DATA_KEYS.flatMap(dk => MEMBRO_KEYS.map(mk => ({ [mk]: `eq.${m.id}`, [dk]: `eq.${s.iso}` }))))
+            } else {
+              const payloads = []
+              payloads.push({ [presencaMembrosMembroKey]: membroVal, [presencaMembrosDataKey]: s.iso })
+              MEMBRO_KEYS.forEach(mk => DATA_KEYS.forEach(dk => payloads.push({ [mk]: membroVal, [dk]: s.iso })))
+              await tryCreateOne(presencaTable, payloads)
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
