@@ -65,7 +65,42 @@ app.MapGet("/api/rest/{table}", async (string table, HttpRequest req, HttpRespon
     await resp.WriteAsync(content);
 });
 
+app.MapGet("/db/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
+{
+    var query = req.QueryString.HasValue ? req.QueryString.Value : "";
+    if (string.IsNullOrEmpty(query))
+        query = "?select=*";
+    else if (!req.Query.ContainsKey("select"))
+        query += "&select=*";
+    var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}{query}";
+    using var client = new HttpClient();
+    var msg = new HttpRequestMessage(HttpMethod.Get, url);
+    CopyHeaders(req, msg);
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    resp.StatusCode = (int)res.StatusCode;
+    resp.ContentType = "application/json";
+    await resp.WriteAsync(content);
+});
+
 app.MapPost("/api/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
+{
+    var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}";
+    using var client = new HttpClient();
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var msg = new HttpRequestMessage(HttpMethod.Post, url);
+    CopyHeaders(req, msg);
+    msg.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+    msg.Content = new StringContent(body);
+    msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    resp.StatusCode = (int)res.StatusCode;
+    resp.ContentType = "application/json";
+    await resp.WriteAsync(content);
+});
+
+app.MapPost("/db/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
 {
     var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}";
     using var client = new HttpClient();
@@ -102,7 +137,56 @@ app.MapPatch("/api/rest/{table}", async (string table, HttpRequest req, HttpResp
     await resp.WriteAsync(content);
 });
 
+app.MapPatch("/db/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
+{
+    var pk = req.Query.ContainsKey("pk") ? req.Query["pk"].ToString() : "id";
+    var id = req.Query.ContainsKey("id") ? req.Query["id"].ToString() : "";
+    var filter = string.IsNullOrEmpty(id) ? "" : $"?{Uri.EscapeDataString(pk)}=eq.{Uri.EscapeDataString(id)}";
+    var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}{filter}";
+    using var client = new HttpClient();
+    var body = await new StreamReader(req.Body).ReadToEndAsync();
+    var msg = new HttpRequestMessage(HttpMethod.Patch, url);
+    CopyHeaders(req, msg);
+    msg.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+    msg.Content = new StringContent(body);
+    msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    resp.StatusCode = (int)res.StatusCode;
+    resp.ContentType = "application/json";
+    await resp.WriteAsync(content);
+});
+
 app.MapDelete("/api/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
+{
+    var query = req.QueryString.HasValue ? req.QueryString.Value : "";
+    if (req.Query.ContainsKey("pk") && req.Query.ContainsKey("id"))
+    {
+        var pk = req.Query["pk"].ToString();
+        var id = req.Query["id"].ToString();
+        var filter = string.IsNullOrEmpty(id) ? "" : $"?{Uri.EscapeDataString(pk)}=eq.{Uri.EscapeDataString(id)}";
+        query = filter;
+    }
+    if (string.IsNullOrEmpty(query))
+    {
+        resp.StatusCode = StatusCodes.Status400BadRequest;
+        resp.ContentType = "application/json";
+        await resp.WriteAsync("{\"message\":\"DELETE requires filters\"}");
+        return;
+    }
+    var url = $"{SUPABASE_URL}/rest/v1/{Uri.EscapeDataString(table)}{query}";
+    using var client = new HttpClient();
+    var msg = new HttpRequestMessage(HttpMethod.Delete, url);
+    CopyHeaders(req, msg);
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    if (string.IsNullOrEmpty(content)) content = "";
+    resp.StatusCode = (int)res.StatusCode;
+    resp.ContentType = "application/json";
+    await resp.WriteAsync(content);
+});
+
+app.MapDelete("/db/rest/{table}", async (string table, HttpRequest req, HttpResponse resp) =>
 {
     var query = req.QueryString.HasValue ? req.QueryString.Value : "";
     if (req.Query.ContainsKey("pk") && req.Query.ContainsKey("id"))

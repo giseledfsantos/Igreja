@@ -1,6 +1,6 @@
 const SUPABASE_URL = 'https://xytuuccwylwbefgkqxlr.supabase.co'
 const API_KEY = 'sb_publishable_kmvt5bwvVonTji9qWqgjKg_r8oKsCRs'
-const PROXY_BASE = '/api/rest'
+const PROXY_BASE = '/db/rest'
 const DIRECT_BASE = `${SUPABASE_URL}/rest/v1`
 let API_MODE = null
 
@@ -172,7 +172,7 @@ function iconEyeOff() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
-const APP_BUILD = '2026-03-23-31'
+const APP_BUILD = '2026-03-23-32'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
