@@ -94,6 +94,12 @@ body {
   border-radius: 10px;
   background: #0b1220;
 }
+.list-item .list-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
 .list-item .title {
   font-weight: 600;
 }

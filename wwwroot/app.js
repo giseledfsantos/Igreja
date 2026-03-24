@@ -19,20 +19,25 @@ function headers() {
 async function apiFetch(path, init, fallbackPath) {
   const proxyUrl = `${PROXY_BASE}${path}`
   const directUrl = `${DIRECT_BASE}${fallbackPath ?? path}`
-  if (API_MODE === 'direct') {
-    const res = await fetch(directUrl, init)
-    if (!res.ok) throw new Error(await res.text())
+  const method = String(init?.method || 'GET').toUpperCase()
+  async function fetchChecked(url) {
+    const res = await fetch(url, init)
+    if (!res.ok) {
+      let text = ''
+      try { text = await res.text() } catch {}
+      const msg = `[${method}] ${url} ${res.status}${res.statusText ? ' ' + res.statusText : ''}${text ? ' - ' + text : ''}`
+      console.error('apiFetch error:', msg)
+      throw new Error(msg)
+    }
     return res
   }
+  if (API_MODE === 'direct' && method === 'GET') return fetchChecked(directUrl)
   try {
-    const res = await fetch(proxyUrl, init)
-    if (res.status === 404) throw new Error('proxy_404')
-    if (!res.ok) throw new Error(await res.text())
+    const res = await fetchChecked(proxyUrl)
     API_MODE = 'proxy'
     return res
   } catch (e) {
-    const res = await fetch(directUrl, init)
-    if (!res.ok) throw new Error(await res.text())
+    const res = await fetchChecked(directUrl)
     API_MODE = 'direct'
     return res
   }
@@ -149,7 +154,7 @@ function iconSave() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave }
-const APP_BUILD = '2026-03-23-12'
+const APP_BUILD = '2026-03-23-27'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -232,6 +237,239 @@ function confirmModal({ title, message, confirmText, cancelText, danger } = {}) 
   })
 }
 
+const DEFAULT_PASSWORD = '12345'
+const AUTH_STORAGE_KEY = 'ieadm_auth_v1'
+const LOGIN_ENABLED = true
+let authState = { userId: '', usuario: '', allowedNorm: new Set() }
+
+function normalizeText(v) {
+  return String(v ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function firstExistingKey(obj, keys) {
+  for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+  return ''
+}
+
+function firstExistingValue(obj, keys) {
+  const k = firstExistingKey(obj, keys)
+  if (!k) return null
+  const v = obj?.[k]
+  if (v === undefined || v === null) return null
+  return v
+}
+
+async function tryCreateOne(tableName, payloads) {
+  let lastErr = null
+  for (const p of payloads) {
+    try {
+      const res = await apiCreate(tableName, [p])
+      if (Array.isArray(res)) return res[0] ?? null
+      return res ?? null
+    } catch (e) {
+      lastErr = e
+      const msg = String(e?.message || e || '')
+      if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+      throw e
+    }
+  }
+  if (lastErr) throw lastErr
+  return null
+}
+
+async function tryDeleteWhere(tableName, filterSets) {
+  let lastErr = null
+  for (const filters of filterSets) {
+    try {
+      await apiDeleteWhere(tableName, filters)
+      return
+    } catch (e) {
+      lastErr = e
+      const msg = String(e?.message || e || '')
+      if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+      if (msg.includes('0 rows affected')) return
+      throw e
+    }
+  }
+  if (lastErr) throw lastErr
+}
+
+function saveAuth() {
+  try {
+    const payload = { userId: authState.userId, usuario: authState.usuario, allowed: Array.from(authState.allowedNorm || []) }
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload))
+  } catch {}
+}
+
+function loadAuth() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
+    if (!raw) return
+    const obj = JSON.parse(raw)
+    authState.userId = String(obj?.userId ?? '').trim()
+    authState.usuario = String(obj?.usuario ?? '').trim()
+    authState.allowedNorm = new Set(Array.isArray(obj?.allowed) ? obj.allowed.map(normalizeText).filter(Boolean) : [])
+  } catch {}
+}
+
+function clearAuth() {
+  authState = { userId: '', usuario: '', allowedNorm: new Set() }
+  try { localStorage.removeItem(AUTH_STORAGE_KEY) } catch {}
+}
+
+function b64FromBytes(bytes) {
+  let s = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    s += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(s)
+}
+
+function bytesFromB64(b64) {
+  const bin = atob(String(b64 || ''))
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+async function hashPasswordPbkdf2(password, { iterations = 120000, saltB64 = '' } = {}) {
+  const salt = saltB64 ? bytesFromB64(saltB64) : crypto.getRandomValues(new Uint8Array(16))
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(password ?? '')), { name: 'PBKDF2' }, false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256)
+  const hashB64 = b64FromBytes(new Uint8Array(bits))
+  const saltOut = saltB64 || b64FromBytes(salt)
+  return `pbkdf2_sha256$${iterations}$${saltOut}$${hashB64}`
+}
+
+async function verifyPassword(password, stored) {
+  const s = String(stored ?? '').trim()
+  if (!s) return false
+  if (!s.startsWith('pbkdf2_sha256$')) return s === String(password ?? '')
+  const parts = s.split('$')
+  const iterations = Number(parts?.[1] ?? 0) || 120000
+  const saltB64 = String(parts?.[2] ?? '')
+  const hashB64 = String(parts?.[3] ?? '')
+  if (!saltB64 || !hashB64) return false
+  const computed = await hashPasswordPbkdf2(password, { iterations, saltB64 })
+  return computed === s
+}
+
+let __passwordModalEls = null
+function changePasswordModal() {
+  if (!__passwordModalEls) {
+    const backdrop = document.createElement('div')
+    backdrop.className = 'modal-backdrop'
+    backdrop.setAttribute('role', 'presentation')
+    const dialog = document.createElement('div')
+    dialog.className = 'modal'
+    dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('aria-modal', 'true')
+
+    const h = document.createElement('h3')
+    h.className = 'modal-title'
+    h.textContent = 'Alterar senha'
+
+    const msg = document.createElement('div')
+    msg.className = 'modal-message'
+    msg.textContent = 'Defina uma nova senha para continuar.'
+
+    const field1 = document.createElement('div')
+    field1.className = 'field'
+    const label1 = document.createElement('label')
+    label1.textContent = 'Nova senha'
+    const input1 = document.createElement('input')
+    input1.type = 'password'
+    field1.appendChild(label1)
+    field1.appendChild(input1)
+
+    const field2 = document.createElement('div')
+    field2.className = 'field'
+    const label2 = document.createElement('label')
+    label2.textContent = 'Confirmar senha'
+    const input2 = document.createElement('input')
+    input2.type = 'password'
+    field2.appendChild(label2)
+    field2.appendChild(input2)
+
+    const err = document.createElement('div')
+    err.className = 'status error'
+    err.style.display = 'none'
+
+    const actions = document.createElement('div')
+    actions.className = 'modal-actions'
+    const btnCancel = document.createElement('button')
+    btnCancel.type = 'button'
+    btnCancel.className = 'btn-secondary'
+    btnCancel.textContent = 'Cancelar'
+    const btnOk = document.createElement('button')
+    btnOk.type = 'button'
+    btnOk.textContent = 'Salvar'
+    actions.appendChild(btnCancel)
+    actions.appendChild(btnOk)
+
+    dialog.appendChild(h)
+    dialog.appendChild(msg)
+    dialog.appendChild(field1)
+    dialog.appendChild(field2)
+    dialog.appendChild(err)
+    dialog.appendChild(actions)
+    backdrop.appendChild(dialog)
+    document.body.appendChild(backdrop)
+
+    __passwordModalEls = { backdrop, input1, input2, err, btnCancel, btnOk, resolve: null, keyHandler: null }
+
+    const close = (val) => {
+      const els = __passwordModalEls
+      els.backdrop.classList.remove('open')
+      if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+      els.keyHandler = null
+      const r = els.resolve
+      els.resolve = null
+      if (r) r(val)
+    }
+
+    btnCancel.onclick = () => close(null)
+    backdrop.onclick = (ev) => { if (ev.target === backdrop) close(null) }
+    btnOk.onclick = () => {
+      const p1 = String(input1.value ?? '')
+      const p2 = String(input2.value ?? '')
+      err.style.display = 'none'
+      if (!p1 || p1.length < 5) { err.textContent = 'Informe uma senha com pelo menos 5 caracteres.'; err.style.display = 'block'; return }
+      if (p1 === DEFAULT_PASSWORD) { err.textContent = 'A nova senha não pode ser a senha padrão.'; err.style.display = 'block'; return }
+      if (p1 !== p2) { err.textContent = 'As senhas não conferem.'; err.style.display = 'block'; return }
+      close(p1)
+    }
+  }
+
+  const els = __passwordModalEls
+  els.input1.value = ''
+  els.input2.value = ''
+  els.err.style.display = 'none'
+  els.backdrop.classList.add('open')
+  els.input1.focus()
+  return new Promise(resolve => {
+    els.resolve = resolve
+    els.keyHandler = (ev) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault()
+        const r = els.resolve
+        els.resolve = null
+        els.backdrop.classList.remove('open')
+        if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+        els.keyHandler = null
+        if (r) r(null)
+      }
+    }
+    window.addEventListener('keydown', els.keyHandler)
+  })
+}
+
 async function loadSchema() {
   let configured = { tables: [] }
   try {
@@ -244,9 +482,20 @@ async function loadSchema() {
 function renderTabs(schema) {
   const tabs = el('tabs')
   tabs.innerHTML = ''
-  schema.tables.forEach((t, i) => {
+  const allTables = Array.isArray(schema?.tables) ? schema.tables : []
+  const tables = (!LOGIN_ENABLED
+    ? allTables.filter(t => normalizeText(t?.name) !== 'login')
+    : allTables.filter(t => {
+    const nm = normalizeText(t?.name)
+    if (nm === 'login') return true
+    if (!authState.userId) return false
+    if (!authState.allowedNorm || !authState.allowedNorm.size) return false
+    const ln = normalizeText(t?.label)
+    return authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln)
+  }))
+  tables.forEach((t) => {
     const b = document.createElement('button')
-    b.className = 'tab' + (i === 0 ? ' active' : '')
+    b.className = 'tab'
     b.textContent = t.label || t.name
     b.dataset.name = t.name
     b.onclick = () => activateTab(t.name)
@@ -327,11 +576,29 @@ function collectPayload(container) {
 function renderTableScreen(schema, table) {
   const screens = el('screens')
   clear(screens)
+  if (String(table.name).toLowerCase() === 'login') {
+    if (!LOGIN_ENABLED) {
+      const card = document.createElement('section')
+      card.className = 'card'
+      const h = document.createElement('h2')
+      h.textContent = 'Login'
+      const p = document.createElement('div')
+      p.textContent = 'Tela de login desativada temporariamente.'
+      card.appendChild(h)
+      card.appendChild(p)
+      screens.appendChild(card)
+      return
+    }
+    return renderLoginScreen(schema, table)
+  }
   if (String(table.name).toLowerCase() === 'membros') {
     return renderMembersScreen(schema, table)
   }
   if (String(table.name).toLowerCase() === 'ebd') {
     return renderEbdScreen(schema, table)
+  }
+  if (String(table.name).toLowerCase() === 'usuarios') {
+    return renderUsuariosScreen(schema, table)
   }
   const cardList = document.createElement('section')
   cardList.className = 'card'
@@ -453,9 +720,23 @@ function renderMembersScreen(schema, table) {
     status.classList.remove('success', 'error')
     if (type === 'success') status.classList.add('success')
     if (type === 'error') status.classList.add('error')
-    status.style.display = ''
+    status.style.display = 'block'
     if (statusTimer) clearTimeout(statusTimer)
     if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+  function friendlySalvarError(e) {
+    const msg = String(e?.message || e || '')
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) return 'Falha de conexão com o servidor.'
+    if (msg.includes('row-level security policy')) return 'Sem permissão para salvar (RLS do Supabase).'
+    return msg
+  }
+  function friendlyUsuariosModulosError(e) {
+    const msg = String(e?.message || e || '')
+    if (msg.includes('usuarios_modulos') && msg.includes('row-level security policy')) return 'Sem permissão para salvar módulos (RLS do Supabase em "usuarios_modulos").'
+    if (msg.includes('usuarios_modulos') && (msg.includes('column') || msg.includes('Could not find'))) return 'Falha ao salvar módulos (colunas de "usuarios_modulos" não conferem com o payload).'
+    if (msg.includes('usuarios_modulos') && (msg.includes('violates') || msg.includes('foreign key'))) return 'Falha ao salvar módulos (IDs de usuário/módulo precisam existir).'
+    if (msg.includes('invalid input syntax for type bigint')) return 'Falha ao salvar módulos (IDs precisam ser numéricos).'
+    return msg
   }
   if (!window.__igrejaErrorHooked) {
     window.__igrejaErrorHooked = true
@@ -722,6 +1003,7 @@ function renderMembersScreen(schema, table) {
       options.forEach(opt => {
         const row = document.createElement('label')
         row.className = 'checklist-item'
+        row.dataset.value = String(opt.value)
         const cb = document.createElement('input')
         cb.type = 'checkbox'
         cb.disabled = disabled
@@ -1126,6 +1408,22 @@ function renderMembersScreen(schema, table) {
     }
     return msg
   }
+  function friendlyUsuariosModulosError(e) {
+    const msg = String(e?.message || e || '')
+    if (msg.includes('usuarios_modulos') && msg.includes('row-level security policy')) {
+      return 'Sem permissão para salvar módulos (RLS do Supabase em "usuarios_modulos").'
+    }
+    if (msg.includes('usuarios_modulos') && (msg.includes('column') || msg.includes('Could not find'))) {
+      return 'Falha ao salvar módulos (colunas de "usuarios_modulos" não conferem com o payload).'
+    }
+    if (msg.includes('usuarios_modulos') && (msg.includes('violates') || msg.includes('foreign key'))) {
+      return 'Falha ao salvar módulos (IDs de usuário/módulo precisam existir).'
+    }
+    if (msg.includes('invalid input syntax for type bigint')) {
+      return 'Falha ao salvar módulos (IDs precisam ser numéricos).'
+    }
+    return msg
+  }
 
   function setCadastroMode(edit) {
     cadastroEditMode = !!edit
@@ -1234,7 +1532,6 @@ function renderMembersScreen(schema, table) {
   actions.appendChild(btnSalvar)
 
   cardCad.appendChild(hCad)
-  cardCad.appendChild(idWrap)
   cardCad.appendChild(form)
   cardCad.appendChild(gruposField.wrap)
   cardCad.appendChild(cargosInternosWrap)
@@ -1261,6 +1558,705 @@ function renderMembersScreen(schema, table) {
   setActiveConsulta()
 }
 
+function renderLoginScreen(schema, table) {
+  const screens = el('screens')
+  clear(screens)
+  const status = document.createElement('div')
+  status.className = 'status'
+  screens.appendChild(status)
+  let statusTimer = null
+  function showStatus(text, type) {
+    status.textContent = text
+    status.classList.remove('success', 'error')
+    if (type === 'success') status.classList.add('success')
+    if (type === 'error') status.classList.add('error')
+    status.style.display = 'block'
+    if (statusTimer) clearTimeout(statusTimer)
+    if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+
+  async function refreshAfterAuth() {
+    renderTabs(schemaCache)
+    const tabs = Array.from(document.querySelectorAll('.tab'))
+    const firstNonLogin = tabs.find(t => normalizeText(t?.dataset?.name) !== 'login')
+    const name = String((firstNonLogin || tabs[0])?.dataset?.name ?? '').trim()
+    if (name) activateTab(name)
+  }
+
+  async function doLogin(login, password) {
+    const LOGIN_KEYS = ['usuario', 'login', 'username', 'user', 'email']
+    const PASS_KEYS = ['senha_hash', 'senha', 'password', 'pass', 'pwd', 'hash']
+    let loginKey = ''
+    let row = null
+    for (const k of LOGIN_KEYS) {
+      try {
+        const rows = await apiGet('usuarios', { select: '*', [k]: `eq.${login}` })
+        if (Array.isArray(rows) && rows.length) {
+          loginKey = k
+          row = rows[0]
+          break
+        }
+      } catch (e) {
+        const msg = String(e?.message || e || '')
+        if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+        throw e
+      }
+    }
+    if (!row) throw new Error('Usuário não encontrado.')
+
+    const pkKey = firstExistingKey(row, ['id', 'usuario_id', 'usuarios_id']) || 'id'
+    const passKey = firstExistingKey(row, PASS_KEYS)
+    const userId = String(row?.[pkKey] ?? '').trim()
+    const storedPass = passKey ? String(row?.[passKey] ?? '').trim() : ''
+    if (!userId) throw new Error('ID do usuário não encontrado.')
+    if (!storedPass) throw new Error('Senha do usuário não configurada.')
+
+    const ok = await verifyPassword(password, storedPass)
+    if (!ok) throw new Error('Senha inválida.')
+
+    const isDefault = await verifyPassword(DEFAULT_PASSWORD, storedPass)
+    if (isDefault) {
+      const newPass = await changePasswordModal()
+      if (!newPass) throw new Error('Senha padrão: é necessário definir uma nova senha.')
+      const newHash = await hashPasswordPbkdf2(newPass)
+      const payloads = []
+      payloads.push({ [passKey || 'senha']: newHash })
+      PASS_KEYS.forEach(pk => payloads.push({ [pk]: newHash }))
+      let updated = false
+      for (const p of payloads) {
+        try {
+          await apiUpdate('usuarios', pkKey, userId, p)
+          updated = true
+          break
+        } catch (e) {
+          const msg = String(e?.message || e || '')
+          if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+          throw e
+        }
+      }
+      if (!updated) throw new Error('Não foi possível atualizar a senha do usuário.')
+    }
+
+    const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'membro']
+    const MOD_LINK_USER_KEYS = ['id_membro', ...MEMBRO_KEYS, 'id_usuario', 'usuario_id', 'usuarios_id', 'idUser', 'user_id', 'usuario']
+    const MOD_LINK_MOD_KEYS = ['id_modulo', 'modulo_id', 'modulos_id', 'idModule', 'module_id', 'modulo']
+    let usuarioModulos = []
+    const membroId = String(firstExistingValue(row, MEMBRO_KEYS) ?? '').trim()
+    if (membroId) {
+      try {
+        const rows = await apiGet('usuarios_modulos', { select: '*', id_membro: `eq.${membroId}` })
+        usuarioModulos = Array.isArray(rows) ? rows : []
+      } catch (e) {
+        const msg = String(e?.message || e || '')
+        if (!(msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown'))) throw e
+      }
+    }
+    if (!usuarioModulos.length) {
+      for (const uk of MOD_LINK_USER_KEYS) {
+        try {
+          const rows = await apiGet('usuarios_modulos', { select: '*', [uk]: `eq.${userId}` })
+          usuarioModulos = Array.isArray(rows) ? rows : []
+          break
+        } catch (e) {
+          const msg = String(e?.message || e || '')
+          if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+          throw e
+        }
+      }
+    }
+
+    let modulos = []
+    let modulosIdKey = 'id'
+    const MOD_CODE_KEYS = ['codigo', 'tela', 'slug', 'nome', 'modulo']
+    try {
+      const rows = await apiList('modulos')
+      modulos = Array.isArray(rows) ? rows : []
+      modulosIdKey = firstExistingKey(modulos[0] || {}, ['id', 'modulo_id', 'codigo']) || 'id'
+    } catch {}
+
+    const allowedNorm = new Set()
+    usuarioModulos.forEach(um => {
+      const midVal = firstExistingValue(um, MOD_LINK_MOD_KEYS)
+      const mid = midVal === null ? '' : String(midVal).trim()
+      if (!mid) return
+      const m = modulos.find(x => String(x?.[modulosIdKey] ?? '').trim() === mid)
+      if (m) {
+        MOD_CODE_KEYS.forEach(k => {
+          const v = m?.[k]
+          if (typeof v === 'string' && v.trim()) allowedNorm.add(normalizeText(v))
+        })
+        const anyStrKey = Object.keys(m || {}).find(k => typeof m?.[k] === 'string' && String(m?.[k] ?? '').trim())
+        if (anyStrKey) allowedNorm.add(normalizeText(String(m?.[anyStrKey] ?? '')))
+      } else {
+        allowedNorm.add(normalizeText(mid))
+      }
+    })
+
+    authState.userId = userId
+    authState.usuario = String(row?.[loginKey] ?? login ?? '').trim()
+    authState.allowedNorm = allowedNorm
+    saveAuth()
+    await refreshAfterAuth()
+    showStatus('Logado.', 'success')
+  }
+
+  const card = document.createElement('section')
+  card.className = 'card'
+  const h = document.createElement('h2')
+  h.textContent = 'Login'
+  card.appendChild(h)
+
+  if (authState.userId) {
+    const info = document.createElement('div')
+    info.className = 'field'
+    const label = document.createElement('label')
+    label.textContent = 'Usuário logado'
+    const v = document.createElement('div')
+    v.textContent = authState.usuario || authState.userId
+    info.appendChild(label)
+    info.appendChild(v)
+    const actions = document.createElement('div')
+    actions.className = 'actions'
+    const btnLogout = document.createElement('button')
+    btnLogout.type = 'button'
+    btnLogout.className = 'danger'
+    btnLogout.textContent = 'Sair'
+    btnLogout.onclick = async () => {
+      clearAuth()
+      renderTabs(schemaCache)
+      activateTab('login')
+    }
+    actions.appendChild(btnLogout)
+    card.appendChild(info)
+    card.appendChild(actions)
+    screens.appendChild(card)
+    return
+  }
+
+  const form = document.createElement('div')
+  const fUser = document.createElement('div')
+  fUser.className = 'field'
+  const lUser = document.createElement('label')
+  lUser.textContent = 'Usuário'
+  const iUser = document.createElement('input')
+  iUser.type = 'text'
+  fUser.appendChild(lUser)
+  fUser.appendChild(iUser)
+
+  const fPass = document.createElement('div')
+  fPass.className = 'field'
+  const lPass = document.createElement('label')
+  lPass.textContent = 'Senha'
+  const iPass = document.createElement('input')
+  iPass.type = 'password'
+  fPass.appendChild(lPass)
+  fPass.appendChild(iPass)
+
+  form.appendChild(fUser)
+  form.appendChild(fPass)
+  card.appendChild(form)
+
+  const actions = document.createElement('div')
+  actions.className = 'actions'
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.textContent = 'Entrar'
+  btn.onclick = async () => {
+    const login = String(iUser.value ?? '').trim()
+    const pass = String(iPass.value ?? '')
+    if (!login || !pass) { showStatus('Informe usuário e senha.', 'error'); return }
+    btn.disabled = true
+    showStatus('Validando...', 'success')
+    try {
+      await doLogin(login, pass)
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    } finally {
+      btn.disabled = false
+    }
+  }
+  actions.appendChild(btn)
+  card.appendChild(actions)
+  screens.appendChild(card)
+}
+
+function renderUsuariosScreen(schema, table) {
+  const screens = el('screens')
+  clear(screens)
+  const status = document.createElement('div')
+  status.className = 'status'
+  screens.appendChild(status)
+  let statusTimer = null
+  function showStatus(text, type) {
+    status.textContent = text
+    status.classList.remove('success', 'error')
+    if (type === 'success') status.classList.add('success')
+    if (type === 'error') status.classList.add('error')
+    status.style.display = 'block'
+    if (statusTimer) clearTimeout(statusTimer)
+    if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+
+  const subtabs = document.createElement('div')
+  subtabs.className = 'subtabs'
+  const btnLista = document.createElement('button')
+  btnLista.className = 'subtab active'
+  btnLista.textContent = 'Lista'
+  const btnCadastro = document.createElement('button')
+  btnCadastro.className = 'subtab'
+  btnCadastro.textContent = 'Cadastro'
+  subtabs.appendChild(btnLista)
+  subtabs.appendChild(btnCadastro)
+  screens.appendChild(subtabs)
+
+  const panelLista = document.createElement('div')
+  const panelCadastro = document.createElement('div')
+  panelCadastro.style.display = 'none'
+  screens.appendChild(panelLista)
+  screens.appendChild(panelCadastro)
+
+  const USERS_TABLE = 'usuarios'
+  const MODULOS_TABLE = 'modulos'
+  const USERS_MODS_TABLE = 'usuarios_modulos'
+  const USERS_MEMBERS_TABLE = 'usuarios_membros'
+
+  const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'membro']
+  const LOGIN_KEYS = ['usuario', 'login', 'username', 'user', 'email']
+  const PASS_KEYS = ['senha_hash', 'senha', 'password', 'pass', 'pwd', 'hash']
+  const USERS_MODS_USER_KEYS = ['id_membro', ...MEMBRO_KEYS]
+  const USERS_MODS_MOD_KEYS = ['id_modulo', 'modulo_id', 'modulos_id', 'module_id', 'idModule', 'moduleId', 'modulo']
+  const USERS_MEMBERS_USER_KEYS = ['id_usuario', 'usuario_id', 'usuarios_id', 'user_id', 'idUser', 'userId', 'usuario']
+  const USERS_MEMBERS_MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'member_id', 'idMembro', 'idMember', 'membro']
+
+  let usuariosPkKey = table.pk || 'id'
+  let usuariosMembroKey = 'id_membro'
+  let usuariosLoginKey = 'usuario'
+  let usuariosPassKey = 'senha'
+  let usuariosModsUserKey = 'id_membro'
+  let usuariosModsModKey = 'id_modulo'
+  let modulosIdKey = 'id'
+  let modulosLabelKey = 'nome'
+
+  const membrosById = new Map()
+  let modulosCache = []
+
+  async function detectLinkKeys(tableName, userKeyCandidates, otherKeyCandidates) {
+    for (const uk of userKeyCandidates) {
+      for (const ok of otherKeyCandidates) {
+        try {
+          await apiGet(tableName, { select: `${uk},${ok}`, limit: 1 })
+          return { userKey: uk, otherKey: ok }
+        } catch (e) {
+          const msg = String(e?.message || e || '')
+          if (msg.includes('PGRST204') || msg.includes('Could not find') || msg.includes('column')) continue
+        }
+      }
+    }
+    return null
+  }
+
+  async function ensureUsuariosModulosKeys() {
+    if (String(usuariosModsUserKey || '').trim() && String(usuariosModsModKey || '').trim()) return
+    const found = await detectLinkKeys(USERS_MODS_TABLE, USERS_MODS_USER_KEYS, USERS_MODS_MOD_KEYS)
+    if (found) {
+      usuariosModsUserKey = found.userKey
+      usuariosModsModKey = found.otherKey
+    }
+  }
+
+  function usernameFromNome(nome) {
+    const parts = String(nome ?? '').trim().split(/\s+/).filter(Boolean)
+    if (!parts.length) return ''
+    const first = normalizeText(parts[0]).toUpperCase()
+    const last = normalizeText(parts.length > 1 ? parts[parts.length - 1] : parts[0]).toUpperCase()
+    if (!first) return ''
+    if (!last || last === first) return first
+    return `${first}.${last}`
+  }
+
+  function createChecklistField(labelText) {
+    const wrap = document.createElement('div')
+    wrap.className = 'field'
+    const label = document.createElement('label')
+    label.textContent = labelText
+    const details = document.createElement('details')
+    details.className = 'checklist'
+    const summary = document.createElement('summary')
+    summary.textContent = 'Selecionar...'
+    const items = document.createElement('div')
+    items.className = 'checklist-items'
+    details.appendChild(summary)
+    details.appendChild(items)
+    wrap.appendChild(label)
+    wrap.appendChild(details)
+    const state = { selected: new Set(), items, summary }
+    function setOptions(options) {
+      items.innerHTML = ''
+      options.forEach(opt => {
+        const row = document.createElement('label')
+        row.className = 'checklist-item'
+        row.dataset.value = String(opt.value)
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.checked = state.selected.has(String(opt.value))
+        cb.onchange = () => {
+          const v = String(opt.value)
+          if (cb.checked) state.selected.add(v)
+          else state.selected.delete(v)
+          summary.textContent = state.selected.size ? `${state.selected.size} selecionado(s)` : 'Selecionar...'
+        }
+        const t = document.createElement('span')
+        t.textContent = opt.label
+        row.appendChild(cb)
+        row.appendChild(t)
+        items.appendChild(row)
+      })
+      summary.textContent = state.selected.size ? `${state.selected.size} selecionado(s)` : 'Selecionar...'
+    }
+    function setSelected(values) {
+      state.selected = new Set((values || []).map(x => String(x)))
+      Array.from(items.querySelectorAll('input[type="checkbox"]')).forEach(cb => {
+        const labelEl = cb.parentElement
+        const textEl = labelEl?.querySelector('span')
+        const label = String(textEl?.textContent ?? '')
+        cb.checked = state.selected.has(String(labelEl?.dataset?.value || ''))
+      })
+      summary.textContent = state.selected.size ? `${state.selected.size} selecionado(s)` : 'Selecionar...'
+    }
+    function getSelected() { return Array.from(state.selected) }
+    return { wrap, setOptions, setSelected, getSelected, state }
+  }
+
+  const cardList = document.createElement('section')
+  cardList.className = 'card'
+  const hList = document.createElement('h2')
+  hList.textContent = 'Usuários'
+  const listWrap = document.createElement('div')
+  cardList.appendChild(hList)
+  cardList.appendChild(listWrap)
+  panelLista.appendChild(cardList)
+
+  const cardCad = document.createElement('section')
+  cardCad.className = 'card'
+  const hCad = document.createElement('h2')
+  hCad.textContent = 'Cadastro de usuário'
+  cardCad.appendChild(hCad)
+  const idWrap = document.createElement('div')
+  idWrap.className = 'field'
+  const idLabel = document.createElement('label')
+  idLabel.textContent = 'ID'
+  const idInput = document.createElement('input')
+  idInput.type = 'text'
+  idInput.readOnly = true
+  idWrap.appendChild(idLabel)
+  idWrap.appendChild(idInput)
+
+  const fMembro = document.createElement('div')
+  fMembro.className = 'field'
+  const lMembro = document.createElement('label')
+  lMembro.textContent = 'Membro'
+  const sMembro = document.createElement('select')
+  fMembro.appendChild(lMembro)
+  fMembro.appendChild(sMembro)
+  cardCad.appendChild(fMembro)
+
+  const fUsuario = document.createElement('div')
+  fUsuario.className = 'field'
+  const lUsuario = document.createElement('label')
+  lUsuario.textContent = 'Usuário'
+  const iUsuario = document.createElement('input')
+  iUsuario.type = 'text'
+  fUsuario.appendChild(lUsuario)
+  fUsuario.appendChild(iUsuario)
+  cardCad.appendChild(fUsuario)
+
+  const modsField = createChecklistField('Módulos')
+  cardCad.appendChild(modsField.wrap)
+
+  const actions = document.createElement('div')
+  actions.className = 'actions'
+  const btnNovo = document.createElement('button')
+  btnNovo.type = 'button'
+  btnNovo.className = 'btn-secondary'
+  btnNovo.textContent = 'Novo'
+  const btnSalvar = document.createElement('button')
+  btnSalvar.type = 'button'
+  btnSalvar.textContent = 'Salvar'
+  actions.appendChild(btnNovo)
+  actions.appendChild(btnSalvar)
+  cardCad.appendChild(actions)
+  panelCadastro.appendChild(cardCad)
+
+  function setActiveLista() {
+    btnLista.classList.add('active')
+    btnCadastro.classList.remove('active')
+    panelLista.style.display = ''
+    panelCadastro.style.display = 'none'
+    refreshList().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
+  function setActiveCadastro() {
+    btnCadastro.classList.add('active')
+    btnLista.classList.remove('active')
+    panelCadastro.style.display = ''
+    panelLista.style.display = 'none'
+  }
+  btnLista.onclick = setActiveLista
+  btnCadastro.onclick = setActiveCadastro
+
+  btnNovo.onclick = () => {
+    idInput.value = ''
+    sMembro.value = ''
+    iUsuario.value = ''
+    modsField.state.selected = new Set()
+    modsField.setOptions(modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value))
+    setActiveCadastro()
+  }
+
+  sMembro.onchange = () => {
+    const mid = String(sMembro.value ?? '').trim()
+    const nome = membrosById.get(mid) || ''
+    iUsuario.value = usernameFromNome(nome)
+  }
+
+  async function loadUserModuleIds(membroId) {
+    await ensureUsuariosModulosKeys()
+    for (const uk of [usuariosModsUserKey, ...USERS_MODS_USER_KEYS].filter(Boolean)) {
+      try {
+        const rows = await apiGet(USERS_MODS_TABLE, { select: usuariosModsModKey ? `${usuariosModsModKey}` : '*', [uk]: `eq.${membroId}` })
+        const list = Array.isArray(rows) ? rows : []
+        if (uk) usuariosModsUserKey = uk
+        list.forEach(r => {
+          const mk = firstExistingKey(r, USERS_MODS_MOD_KEYS)
+          if (mk) usuariosModsModKey = mk
+        })
+        return list.map(r => firstExistingValue(r, USERS_MODS_MOD_KEYS)).filter(v => v !== null && v !== undefined).map(v => String(v).trim()).filter(Boolean)
+      } catch (e) {
+        const msg = String(e?.message || e || '')
+        if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+        throw e
+      }
+    }
+    return []
+  }
+
+  async function fillCadastro(userRow) {
+    const id = String(userRow?.[usuariosPkKey] ?? userRow?.id ?? '').trim()
+    idInput.value = id
+    const membroVal = firstExistingValue(userRow, MEMBRO_KEYS)
+    if (membroVal !== null && membroVal !== undefined) {
+      const mv = String(membroVal).trim()
+      if (mv) {
+        const mk = firstExistingKey(userRow, MEMBRO_KEYS)
+        if (mk) usuariosMembroKey = mk
+        sMembro.value = mv
+      }
+    }
+    const lk = firstExistingKey(userRow, LOGIN_KEYS)
+    if (lk) usuariosLoginKey = lk
+    iUsuario.value = String(userRow?.[usuariosLoginKey] ?? '').trim()
+    const pk = firstExistingKey(userRow, PASS_KEYS)
+    if (pk) usuariosPassKey = pk
+    const mid = String(sMembro.value ?? '').trim()
+    const selected = mid ? await loadUserModuleIds(mid) : []
+    modsField.state.selected = new Set(selected)
+    const opts = modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value)
+    modsField.setOptions(opts)
+    setActiveCadastro()
+  }
+
+  async function refreshList() {
+    listWrap.innerHTML = ''
+    showStatus('Carregando...', 'success')
+
+    const membrosRows = await apiGet('membros', { select: 'id,nome' })
+    const membros = (Array.isArray(membrosRows) ? membrosRows : [])
+      .map(r => ({ id: String(r?.id ?? '').trim(), nome: String(r?.nome ?? '').trim() }))
+      .filter(x => x.id && x.nome)
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
+    membrosById.clear()
+    sMembro.innerHTML = ''
+    const opt0 = document.createElement('option')
+    opt0.value = ''
+    opt0.textContent = ''
+    sMembro.appendChild(opt0)
+    membros.forEach(m => {
+      membrosById.set(m.id, m.nome)
+      const opt = document.createElement('option')
+      opt.value = m.id
+      opt.textContent = m.nome
+      sMembro.appendChild(opt)
+    })
+
+    try {
+      const mods = await apiList(MODULOS_TABLE)
+      modulosCache = Array.isArray(mods) ? mods : []
+      const sample = modulosCache[0] || {}
+      modulosIdKey = firstExistingKey(sample, ['id', 'modulo_id', 'codigo']) || 'id'
+      modulosLabelKey = Object.keys(sample || {}).find(k => typeof sample?.[k] === 'string' && String(sample?.[k] ?? '').trim()) || 'nome'
+    } catch (e) {
+      modulosCache = []
+      showStatus(String(e?.message || e), 'error')
+    }
+    await ensureUsuariosModulosKeys()
+    modsField.state.selected = modsField.state.selected || new Set()
+    modsField.setOptions(modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value))
+
+    let users = []
+    try {
+      const rows = await apiList(USERS_TABLE)
+      users = Array.isArray(rows) ? rows : []
+      const sample = users[0] || {}
+      usuariosPkKey = firstExistingKey(sample, [usuariosPkKey, 'id', 'usuario_id']) || usuariosPkKey
+      usuariosMembroKey = firstExistingKey(sample, MEMBRO_KEYS) || usuariosMembroKey
+      usuariosLoginKey = firstExistingKey(sample, LOGIN_KEYS) || usuariosLoginKey
+      usuariosPassKey = firstExistingKey(sample, PASS_KEYS) || usuariosPassKey
+    } catch (e) {
+      users = []
+      showStatus(String(e?.message || e), 'error')
+    }
+
+    users = users.slice().sort((a, b) => {
+      const la = String(a?.[usuariosLoginKey] ?? '').trim()
+      const lb = String(b?.[usuariosLoginKey] ?? '').trim()
+      if (!la && !lb) return 0
+      if (!la) return 1
+      if (!lb) return -1
+      return la.localeCompare(lb, 'pt-BR', { sensitivity: 'base' })
+    })
+
+    users.forEach(u => {
+      const div = document.createElement('div')
+      div.className = 'list-item'
+      const main = document.createElement('div')
+      main.className = 'list-main'
+      const title = document.createElement('div')
+      title.className = 'title'
+      const login = String(u?.[usuariosLoginKey] ?? '').trim() || '(sem usuário)'
+      const membroId = String(u?.[usuariosMembroKey] ?? '').trim()
+      const membroNome = membrosById.get(membroId) || ''
+      title.textContent = login
+      title.style.cursor = 'pointer'
+      title.onclick = async () => fillCadastro(u)
+      const subtitle = document.createElement('div')
+      subtitle.className = 'subtitle'
+      subtitle.textContent = membroNome ? `Membro: ${membroNome}` : (membroId ? `Membro ID: ${membroId}` : '')
+      const actionsDiv = document.createElement('div')
+      actionsDiv.className = 'grid-actions'
+      const btnDelete = document.createElement('button')
+      btnDelete.type = 'button'
+      btnDelete.title = 'Excluir'
+      btnDelete.setAttribute('aria-label', 'Excluir')
+      btnDelete.className = 'danger icon-btn'
+      setButtonIcon(btnDelete, 'trash')
+      btnDelete.onclick = async (ev) => {
+        try { ev?.stopPropagation?.() } catch {}
+        const id = String(u?.[usuariosPkKey] ?? '').trim()
+        if (!id) { showStatus('ID do usuário não encontrado.', 'error'); return }
+        const ok = await confirmModal({ title: 'Confirmar exclusão', message: `Excluir o usuário "${login}"?`, confirmText: 'Excluir', cancelText: 'Cancelar', danger: true })
+        if (!ok) return
+        showStatus('Excluindo...', 'success')
+        const membroId = String(u?.[usuariosMembroKey] ?? '').trim()
+        if (membroId) {
+          try { await apiDeleteWhere(USERS_MODS_TABLE, { id_membro: `eq.${membroId}` }) } catch {}
+        }
+        await apiDelete(USERS_TABLE, usuariosPkKey, id)
+        showStatus('Excluído.', 'success')
+        refreshList().catch(() => {})
+      }
+      actionsDiv.appendChild(btnDelete)
+      main.appendChild(title)
+      main.appendChild(subtitle)
+      div.appendChild(main)
+      div.appendChild(actionsDiv)
+      listWrap.appendChild(div)
+    })
+
+    showStatus('Pronto.', 'success')
+  }
+
+  btnSalvar.onclick = async () => {
+    const id = String(idInput.value ?? '').trim()
+    const membroId = String(sMembro.value ?? '').trim()
+    const login = String(iUsuario.value ?? '').trim()
+    if (!membroId) { showStatus('Selecione o membro.', 'error'); return }
+    if (!login) { showStatus('Informe o usuário.', 'error'); return }
+
+    btnSalvar.disabled = true
+    showStatus('Salvando...', 'success')
+    try {
+      const membroVal = /^\d+$/.test(membroId) ? Number(membroId) : membroId
+      const userPayloads = []
+      const loginKeys = [usuariosLoginKey, ...LOGIN_KEYS].filter(Boolean)
+      const membroKeys = [usuariosMembroKey, ...MEMBRO_KEYS].filter(Boolean)
+      const passKeys = [usuariosPassKey, ...PASS_KEYS].filter(Boolean)
+      let userId = id
+      if (!id) {
+        const passHash = await hashPasswordPbkdf2(DEFAULT_PASSWORD)
+        membroKeys.forEach(mk => {
+          loginKeys.forEach(lk => {
+            passKeys.forEach(pk => userPayloads.push({ [mk]: membroVal, [lk]: login, [pk]: passHash }))
+          })
+        })
+        const created = await tryCreateOne(USERS_TABLE, userPayloads)
+        userId = String(created?.[usuariosPkKey] ?? created?.id ?? '').trim()
+        if (!userId) throw new Error('Não foi possível identificar o usuário criado.')
+      } else {
+        const payloads = []
+        membroKeys.forEach(mk => loginKeys.forEach(lk => payloads.push({ [mk]: membroVal, [lk]: login })))
+        let updated = false
+        for (const p of payloads) {
+          try {
+            await apiUpdate(USERS_TABLE, usuariosPkKey, id, p)
+            updated = true
+            break
+          } catch (e) {
+            const msg = String(e?.message || e || '')
+            if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+            throw e
+          }
+        }
+        if (!updated) throw new Error('Não foi possível atualizar o usuário.')
+      }
+
+    try {
+      await tryDeleteWhere(USERS_MEMBERS_TABLE, USERS_MEMBERS_USER_KEYS.map(k => ({ [k]: `eq.${userId}` })))
+      const payloads = []
+      const userKeys = USERS_MEMBERS_USER_KEYS
+      const membroKeys = USERS_MEMBERS_MEMBRO_KEYS
+      userKeys.forEach(uk => membroKeys.forEach(mk => payloads.push({ [uk]: /^\d+$/.test(userId) ? Number(userId) : userId, [mk]: membroVal })))
+      await tryCreateOne(USERS_MEMBERS_TABLE, payloads)
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      if (!(msg.includes('Could not find') || msg.includes('does not exist') || msg.includes('Not Found') || msg.includes('404'))) throw e
+    }
+
+      const selectedMods = modsField.getSelected().map(x => String(x).trim()).filter(Boolean)
+      if (!selectedMods.length) { showStatus('Selecione pelo menos um módulo.', 'error'); return }
+      try { await apiDeleteWhere(USERS_MODS_TABLE, { id_membro: `eq.${membroId}` }) } catch {}
+      await ensureUsuariosModulosKeys()
+      for (const mid of selectedMods) {
+        const modVal = /^\d+$/.test(mid) ? Number(mid) : mid
+        const membroVal2 = /^\d+$/.test(membroId) ? Number(membroId) : membroId
+        await apiCreate(USERS_MODS_TABLE, [{ [usuariosModsUserKey]: membroVal2, [usuariosModsModKey]: modVal }])
+      }
+      const savedMods = await loadUserModuleIds(membroId)
+      if (savedMods.length < selectedMods.length) throw new Error('Não foi possível gravar os módulos do usuário em usuarios_modulos.')
+
+      showStatus(id ? 'Alterações salvas.' : 'Usuário criado com senha padrão 12345.', 'success')
+      setActiveLista()
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      const friendly = friendlyUsuariosModulosError(msg) || friendlySalvarError(msg) || msg
+      showStatus(friendly, 'error')
+    } finally {
+      btnSalvar.disabled = false
+    }
+  }
+
+  setActiveLista()
+}
+
 function renderEbdScreen(schema, table) {
   const screens = el('screens')
   clear(screens)
@@ -1273,7 +2269,7 @@ function renderEbdScreen(schema, table) {
     status.classList.remove('success', 'error')
     if (type === 'success') status.classList.add('success')
     if (type === 'error') status.classList.add('error')
-    status.style.display = ''
+    status.style.display = 'block'
     if (statusTimer) clearTimeout(statusTimer)
     if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
   }
@@ -1654,12 +2650,24 @@ function renderEbdScreen(schema, table) {
 let current = null
 let schemaCache = null
 function activateTab(name) {
-  current = name
+  const all = Array.isArray(schemaCache?.tables) ? schemaCache.tables : []
+  const visible = (!LOGIN_ENABLED
+    ? all.filter(t => normalizeText(t?.name) !== 'login')
+    : all.filter(t => {
+      const nm = normalizeText(t?.name)
+      if (nm === 'login') return true
+      if (!authState.userId) return false
+      if (!authState.allowedNorm || !authState.allowedNorm.size) return false
+      const ln = normalizeText(t?.label)
+      return authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln)
+    }))
+  const chosen = visible.find(x => x.name === name) || visible[0]
+  if (!chosen) return
+  current = chosen.name
   document.querySelectorAll('.tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.name === name)
+    btn.classList.toggle('active', btn.dataset.name === current)
   })
-  const t = schemaCache.tables.find(x => x.name === name)
-  if (t) renderTableScreen(schemaCache, t)
+  renderTableScreen(schemaCache, chosen)
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -1670,7 +2678,21 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.documentElement.dataset.build = APP_BUILD
     console.log('APP_BUILD', APP_BUILD)
   } catch {}
+  if (LOGIN_ENABLED) loadAuth()
+  else clearAuth()
   schemaCache = await loadSchema()
   renderTabs(schemaCache)
-  if (schemaCache.tables.length) activateTab(schemaCache.tables[0].name)
+  const all = Array.isArray(schemaCache?.tables) ? schemaCache.tables : []
+  const visible = (!LOGIN_ENABLED
+    ? all.filter(t => normalizeText(t?.name) !== 'login')
+    : all.filter(t => {
+      const nm = normalizeText(t?.name)
+      if (nm === 'login') return true
+      if (!authState.userId) return false
+      if (!authState.allowedNorm || !authState.allowedNorm.size) return false
+      const ln = normalizeText(t?.label)
+      return authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln)
+    }))
+  const first = visible[0]
+  if (first) activateTab(first.name)
 })

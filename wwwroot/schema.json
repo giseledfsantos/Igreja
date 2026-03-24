@@ -1,6 +1,12 @@
 {
   "tables": [
     {
+      "name": "login",
+      "label": "Login",
+      "pk": "id",
+      "fields": []
+    },
+    {
       "name": "membros",
       "label": "Membros",
       "pk": "id",
@@ -64,6 +70,12 @@
     {
       "name": "ebd",
       "label": "EBD",
+      "pk": "id",
+      "fields": []
+    },
+    {
+      "name": "usuarios",
+      "label": "Usuários",
       "pk": "id",
       "fields": []
     }
