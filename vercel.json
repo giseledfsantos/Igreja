@@ -1,8 +1,8 @@
 {
   "outputDirectory": "wwwroot",
   "rewrites": [
-    { "source": "/db/rest/(.*)", "destination": "/api/rest/$1" },
-    { "source": "/api/rest/(.*)", "destination": "/api/rest/$1" },
+    { "source": "/db/rest/(.*)", "destination": "/api/rest?table=$1" },
+    { "source": "/api/rest/(.*)", "destination": "/api/rest?table=$1" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/styles.css", "destination": "/wwwroot/styles.css" },
     { "source": "/app.js", "destination": "/wwwroot/app.js" },
