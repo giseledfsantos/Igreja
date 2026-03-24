@@ -172,7 +172,7 @@ function iconEyeOff() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
-const APP_BUILD = '2026-03-23-34'
+const APP_BUILD = '2026-03-23-35'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -1645,6 +1645,7 @@ function renderLoginScreen(schema, table) {
       try {
         const rows = await apiGet('usuarios', { select: '*', [k]: `eq.${login}` })
         if (Array.isArray(rows) && rows.length) {
+          if (rows.length > 1) throw new Error('Login duplicado. Entre em contato com o administrador.')
           loginKey = k
           row = rows[0]
           break
