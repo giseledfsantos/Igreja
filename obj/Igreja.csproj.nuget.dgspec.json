@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Dev\\Igreja\\Igreja.csproj": {}
+    "d:\\Dev\\Igreja\\Igreja.csproj": {}
   },
   "projects": {
-    "D:\\Dev\\Igreja\\Igreja.csproj": {
+    "d:\\Dev\\Igreja\\Igreja.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Dev\\Igreja\\Igreja.csproj",
+        "projectUniqueName": "d:\\Dev\\Igreja\\Igreja.csproj",
         "projectName": "Igreja",
-        "projectPath": "D:\\Dev\\Igreja\\Igreja.csproj",
+        "projectPath": "d:\\Dev\\Igreja\\Igreja.csproj",
         "packagesPath": "C:\\Users\\zeleg\\.nuget\\packages\\",
-        "outputPath": "D:\\Dev\\Igreja\\obj\\",
+        "outputPath": "d:\\Dev\\Igreja\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\zeleg\\AppData\\Roaming\\NuGet\\NuGet.Config"

@@ -172,7 +172,7 @@ function iconEyeOff() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
-const APP_BUILD = '2026-03-23-32'
+const APP_BUILD = '2026-03-23-33'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -403,6 +403,7 @@ function changePasswordModal() {
     label1.textContent = 'Nova senha'
     const input1 = document.createElement('input')
     input1.type = 'password'
+    input1.autocomplete = 'new-password'
     const wrap1 = document.createElement('div')
     wrap1.className = 'input-with-icon'
     const btnEye1 = document.createElement('button')
@@ -421,6 +422,7 @@ function changePasswordModal() {
     label2.textContent = 'Confirmar senha'
     const input2 = document.createElement('input')
     input2.type = 'password'
+    input2.autocomplete = 'new-password'
     const wrap2 = document.createElement('div')
     wrap2.className = 'input-with-icon'
     const btnEye2 = document.createElement('button')
@@ -1824,6 +1826,7 @@ function renderLoginScreen(schema, table) {
   lUser.textContent = 'Usuário'
   const iUser = document.createElement('input')
   iUser.type = 'text'
+  iUser.autocomplete = 'username'
   fUser.appendChild(lUser)
   fUser.appendChild(iUser)
 
@@ -1833,6 +1836,7 @@ function renderLoginScreen(schema, table) {
   lPass.textContent = 'Senha'
   const iPass = document.createElement('input')
   iPass.type = 'password'
+  iPass.autocomplete = 'new-password'
   const passWrap = document.createElement('div')
   passWrap.className = 'input-with-icon'
   const btnEye = document.createElement('button')
