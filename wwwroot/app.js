@@ -187,7 +187,7 @@ function iconMenu() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
-const APP_BUILD = '2026-03-25-09'
+const APP_BUILD = '2026-03-25-14'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -2502,6 +2502,24 @@ function renderEbdScreen(schema, table) {
     if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
   }
 
+  const subtabs = document.createElement('div')
+  subtabs.className = 'subtabs'
+  const btnFreq = document.createElement('button')
+  btnFreq.className = 'subtab active'
+  btnFreq.textContent = 'Frequência'
+  const btnCaixa = document.createElement('button')
+  btnCaixa.className = 'subtab'
+  btnCaixa.textContent = 'Caixa'
+  subtabs.appendChild(btnFreq)
+  subtabs.appendChild(btnCaixa)
+  screens.appendChild(subtabs)
+
+  const panelFreq = document.createElement('div')
+  const panelCaixa = document.createElement('div')
+  panelCaixa.style.display = 'none'
+  screens.appendChild(panelFreq)
+  screens.appendChild(panelCaixa)
+
   const card = document.createElement('section')
   card.className = 'card'
   const h = document.createElement('h2')
@@ -2514,7 +2532,7 @@ function renderEbdScreen(schema, table) {
   tableEl.className = 'ebd-table'
   wrap.appendChild(tableEl)
   card.appendChild(wrap)
-  screens.appendChild(card)
+  panelFreq.appendChild(card)
 
   const MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
   function pad2(n) { return String(n).padStart(2, '0') }
@@ -2872,6 +2890,181 @@ function renderEbdScreen(schema, table) {
 
   window.addEventListener('resize', applyStickyOffsets)
   load().catch(e => showStatus(String(e?.message || e), 'error'))
+
+  const cardCx = document.createElement('section')
+  cardCx.className = 'card'
+  const hCx = document.createElement('h2')
+  hCx.textContent = 'EBD - Caixa'
+  cardCx.appendChild(hCx)
+  const formCx = document.createElement('div')
+  const fTipo = document.createElement('div'); fTipo.className = 'field'
+  const lTipo = document.createElement('label'); lTipo.textContent = 'Tipo'
+  const iTipo = document.createElement('select')
+  ;['entrada','saida'].forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t.toUpperCase(); iTipo.appendChild(o) })
+  fTipo.appendChild(lTipo); fTipo.appendChild(iTipo)
+  const fData = document.createElement('div'); fData.className = 'field'
+  const lData = document.createElement('label'); lData.textContent = 'Data'
+  const iData = document.createElement('input'); iData.type = 'date'
+  fData.appendChild(lData); fData.appendChild(iData)
+  const fValor = document.createElement('div'); fValor.className = 'field'
+  const lValor = document.createElement('label'); lValor.textContent = 'Valor'
+  const iValor = document.createElement('input'); iValor.type = 'number'; iValor.step = '0.01'; iValor.inputMode = 'decimal'
+  fValor.appendChild(lValor); fValor.appendChild(iValor)
+  const fDesc = document.createElement('div'); fDesc.className = 'field'
+  const lDesc = document.createElement('label'); lDesc.textContent = 'Descrição'
+  const iDesc = document.createElement('input'); iDesc.type = 'text'
+  fDesc.appendChild(lDesc); fDesc.appendChild(iDesc)
+  const actionsCx = document.createElement('div'); actionsCx.className = 'actions'
+  const btnSalvarCx = document.createElement('button'); btnSalvarCx.type = 'button'; btnSalvarCx.className = 'icon-btn'; btnSalvarCx.title = 'Salvar'; btnSalvarCx.setAttribute('aria-label','Salvar'); setButtonIcon(btnSalvarCx,'save')
+  actionsCx.appendChild(btnSalvarCx)
+  formCx.appendChild(fTipo)
+  formCx.appendChild(fData)
+  formCx.appendChild(fValor)
+  formCx.appendChild(fDesc)
+  formCx.appendChild(actionsCx)
+  cardCx.appendChild(formCx)
+  const listCard = document.createElement('section'); listCard.className = 'card'
+  const hList = document.createElement('h2'); hList.textContent = 'Lançamentos'
+  const listWrap = document.createElement('div'); listWrap.className = 'ebd-wrap'
+  const tableCx = document.createElement('table'); tableCx.className = 'ebd-table'
+  listWrap.appendChild(tableCx)
+  const saldoWrap = document.createElement('div'); saldoWrap.className = 'saldo'
+  listCard.appendChild(hList); listCard.appendChild(listWrap); listCard.appendChild(saldoWrap)
+  panelCaixa.appendChild(cardCx)
+  panelCaixa.appendChild(listCard)
+  let editId = ''
+  function todayStr() {
+    const d = new Date()
+    const p = (n) => String(n).padStart(2,'0')
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`
+  }
+  function clearForm() {
+    iTipo.value = 'entrada'
+    iData.value = todayStr()
+    iValor.value = ''
+    iDesc.value = ''
+    editId = ''
+  }
+  async function refreshList() {
+    tableCx.innerHTML = ''
+    let rows = []
+    try {
+      rows = await apiList('ebd_caixa')
+    } catch (e) {
+      saldoWrap.textContent = ''
+      showStatus(String(e?.message || e), 'error')
+      return
+    }
+    rows = Array.isArray(rows) ? rows : []
+    rows.sort((a,b) => {
+      const ad = String(a?.data ?? '')
+      const bd = String(b?.data ?? '')
+      if (ad !== bd) return ad.localeCompare(bd)
+      const ai = Number(a?.id ?? 0), bi = Number(b?.id ?? 0)
+      return ai - bi
+    })
+    function money(v) {
+      if (v === null || v === undefined || v === '') return ''
+      const n = Number(v)
+      if (!Number.isFinite(n)) return ''
+      return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }
+    const thead = document.createElement('thead')
+    const hr = document.createElement('tr')
+    ;['DATA', 'ENTRADA', 'SAIDA', 'SALDO', 'DESCRIÇÃO'].forEach(t => {
+      const th = document.createElement('th')
+      th.textContent = t
+      hr.appendChild(th)
+    })
+    thead.appendChild(hr)
+    tableCx.appendChild(thead)
+
+    const tbody = document.createElement('tbody')
+    let totalIn = 0, totalOut = 0, running = 0
+    rows.forEach(r => {
+      const tr = document.createElement('tr')
+      const dd = String(r?.data ?? '').slice(0, 10)
+      const tp = String(r?.tipo ?? '').toLowerCase()
+      const vv = Number(r?.valor ?? 0)
+      const isOut = tp === 'saida'
+      const inVal = isOut ? '' : vv
+      const outVal = isOut ? vv : ''
+      if (isOut) totalOut += vv
+      else totalIn += vv
+      running += isOut ? -vv : vv
+
+      const tdData = document.createElement('td'); tdData.textContent = dd || ''
+      const tdIn = document.createElement('td'); tdIn.textContent = money(inVal)
+      const tdOut = document.createElement('td'); tdOut.textContent = money(outVal)
+      const tdSaldo = document.createElement('td'); tdSaldo.textContent = money(running)
+      const tdDesc = document.createElement('td'); tdDesc.className = 'caixa-desc'
+
+      const descText = document.createElement('div')
+      descText.textContent = String(r?.descricao ?? '')
+
+      const actions = document.createElement('div'); actions.className = 'grid-actions'
+      const btnEdit = document.createElement('button'); btnEdit.type = 'button'; btnEdit.className = 'icon-btn'; btnEdit.title = 'Editar'; setButtonIcon(btnEdit, 'edit')
+      const btnDel = document.createElement('button'); btnDel.type = 'button'; btnDel.className = 'danger icon-btn'; btnDel.title = 'Excluir'; setButtonIcon(btnDel, 'trash')
+
+      btnEdit.onclick = (ev) => {
+        try { ev?.stopPropagation?.() } catch {}
+        editId = String(r?.id ?? '').trim()
+        iTipo.value = String(r?.tipo ?? '').toLowerCase() === 'saida' ? 'saida' : 'entrada'
+        iData.value = String(r?.data ?? '').slice(0, 10) || todayStr()
+        iValor.value = String(r?.valor ?? '')
+        iDesc.value = String(r?.descricao ?? '')
+      }
+      btnDel.onclick = async (ev) => {
+        try { ev?.stopPropagation?.() } catch {}
+        const id = String(r?.id ?? '').trim()
+        if (!id) return
+        const ok = await confirmModal({ title: 'Confirmar exclusão', message: 'Excluir lançamento?', confirmText: 'Excluir', cancelText: 'Cancelar', danger: true })
+        if (!ok) return
+        try { await apiDelete('ebd_caixa', 'id', id); refreshList() } catch (e) { showStatus(String(e?.message || e), 'error') }
+      }
+      tr.onclick = () => btnEdit.onclick()
+
+      actions.appendChild(btnEdit); actions.appendChild(btnDel)
+      tdDesc.appendChild(descText)
+      tdDesc.appendChild(actions)
+
+      tr.appendChild(tdData)
+      tr.appendChild(tdIn)
+      tr.appendChild(tdOut)
+      tr.appendChild(tdSaldo)
+      tr.appendChild(tdDesc)
+      tbody.appendChild(tr)
+    })
+    tableCx.appendChild(tbody)
+    const saldo = totalIn - totalOut
+    saldoWrap.textContent = `Saldo final: ${money(saldo)}`
+    const trs = tbody.querySelectorAll('tr')
+    if (trs.length) trs[trs.length - 1].scrollIntoView({ block: 'nearest' })
+  }
+  btnSalvarCx.onclick = async () => {
+    const payload = {
+      data: (iData.value || null),
+      valor: iValor.value ? Number(iValor.value) : null,
+      tipo: String(iTipo.value || '').toLowerCase() || null,
+      descricao: iDesc.value || null
+    }
+    try {
+      if (editId) await apiUpdate('ebd_caixa','id', editId, payload)
+      else await apiCreate('ebd_caixa', [payload])
+      showStatus('Salvo.', 'success')
+      clearForm()
+      refreshList()
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    }
+  }
+  clearForm()
+  refreshList()
+
+  function setActiveFreq() { btnFreq.classList.add('active'); btnCaixa.classList.remove('active'); panelFreq.style.display=''; panelCaixa.style.display='none' }
+  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none' }
+  btnFreq.onclick = setActiveFreq
+  btnCaixa.onclick = setActiveCaixa
 }
 
 function renderCirculoOracaoScreen(schema, table) {
@@ -3235,7 +3428,10 @@ function activateTab(name) {
       const ln = normalizeText(t?.label)
       return authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln)
     }))
-  const chosen = visible.find(x => x.name === name) || visible[0]
+  let chosen = visible.find(x => x.name === name) || visible[0]
+  if (!chosen && normalizeText(name) === 'login') {
+    chosen = { name: 'login', label: 'Login', pk: 'id', fields: [] }
+  }
   if (!chosen) return
   current = chosen.name
   document.querySelectorAll('.tab').forEach(btn => {

@@ -429,6 +429,20 @@ button.danger { background: var(--danger); color: white; }
   text-align: center;
   background: #0b1220;
 }
+.caixa-desc {
+  text-align: left;
+  min-width: 260px;
+}
+.caixa-desc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.saldo {
+  margin-top: 10px;
+  font-weight: 800;
+}
 .ebd-table td.ebd-sticky {
   text-align: left;
 }
