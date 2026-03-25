@@ -31,7 +31,6 @@ body {
 body.menu-collapsed .wallpaper {
   left: 0;
 }
-.screen-login #btnToggleMenu,
 .screen-login .header-actions {
   display: none;
 }
@@ -411,7 +410,9 @@ button.danger { background: var(--danger); color: white; }
 }
 
 .ebd-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid #334155;
   border-radius: 12px;
   background: #0b1220;
@@ -442,6 +443,13 @@ button.danger { background: var(--danger); color: white; }
 .saldo {
   margin-top: 10px;
   font-weight: 800;
+}
+@media (max-width: 600px) {
+  .container { padding: 12px; }
+  .ebd-table th, .ebd-table td { padding: 4px 6px; font-size: 11px; }
+  .ebd-sticky-1 { min-width: 160px; }
+  .ebd-turma { width: 100px; }
+  .caixa-desc { min-width: 180px; }
 }
 .ebd-table td.ebd-sticky {
   text-align: left;
