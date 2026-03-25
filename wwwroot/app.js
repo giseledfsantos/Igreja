@@ -171,7 +171,14 @@ function iconEyeOff() {
   return svg
 }
 
-const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff }
+function iconUser() {
+  const svg = createSvg()
+  addPath(svg, 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2')
+  addPath(svg, 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z')
+  return svg
+}
+
+const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser }
 const APP_BUILD = '2026-03-24-02'
 
 function setButtonIcon(button, name) {
@@ -536,16 +543,15 @@ function renderTabs(schema) {
   const tabs = el('tabs')
   tabs.innerHTML = ''
   const allTables = Array.isArray(schema?.tables) ? schema.tables : []
-  const tables = (!LOGIN_ENABLED
-    ? allTables.filter(t => normalizeText(t?.name) !== 'login')
-    : allTables.filter(t => {
+  const tables = allTables.filter(t => {
     const nm = normalizeText(t?.name)
-    if (nm === 'login') return true
+    if (nm === 'login') return false
+    if (!LOGIN_ENABLED) return true
     if (!authState.userId) return false
     if (!authState.allowedNorm || !authState.allowedNorm.size) return false
     const ln = normalizeText(t?.label)
     return authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln)
-  }))
+  })
   tables.forEach((t) => {
     const b = document.createElement('button')
     b.className = 'tab'
@@ -1799,7 +1805,11 @@ function renderLoginScreen(schema, table) {
       const midVal = firstExistingValue(um, MOD_LINK_MOD_KEYS)
       const mid = midVal === null ? '' : String(midVal).trim()
       if (!mid) return
-      const m = modulos.find(x => String(x?.[modulosIdKey] ?? '').trim() === mid)
+      let m = modulos.find(x => String(x?.[modulosIdKey] ?? '').trim() === mid)
+      if (!m) {
+        const midNorm = normalizeText(mid)
+        m = modulos.find(x => MOD_CODE_KEYS.some(k => normalizeText(String(x?.[k] ?? '')) === midNorm))
+      }
       if (m) {
         MOD_CODE_KEYS.forEach(k => {
           const v = m?.[k]
@@ -3214,6 +3224,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     const h1 = document.querySelector('.app-header h1')
     if (h1) h1.textContent = 'IEADM-ITAPEVA'
+    const header = document.querySelector('.app-header')
+    if (header && !header.querySelector('.header-actions')) {
+      const right = document.createElement('div')
+      right.className = 'header-actions'
+      const btnLogin = document.createElement('button')
+      btnLogin.type = 'button'
+      btnLogin.title = 'Login'
+      btnLogin.setAttribute('aria-label', 'Login')
+      btnLogin.className = 'icon-btn'
+      setButtonIcon(btnLogin, 'user')
+      btnLogin.onclick = () => activateTab('login')
+      right.appendChild(btnLogin)
+      header.appendChild(right)
+    }
     document.title = 'IEADM-ITAPEVA'
     document.documentElement.dataset.build = APP_BUILD
     console.log('APP_BUILD', APP_BUILD)
