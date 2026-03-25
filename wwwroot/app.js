@@ -814,7 +814,7 @@ function renderMembersScreen(schema, table) {
   const cardList = document.createElement('section')
   cardList.className = 'card'
   const hList = document.createElement('h2')
-  hList.textContent = 'Lista de membros'
+  hList.textContent = 'Lista de Membros'
   const filtersWrap = document.createElement('div')
   filtersWrap.className = 'filters'
   const listWrap = document.createElement('div')
@@ -950,7 +950,7 @@ function renderMembersScreen(schema, table) {
         title.style.cursor = 'pointer'
         title.onclick = async () => {
           await fillCadastro(item)
-          setActiveCadastro()
+          setActiveCadastro({ keep: true })
         }
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
         const btnDelete = document.createElement('button'); btnDelete.type = 'button'; btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
@@ -1002,7 +1002,7 @@ function renderMembersScreen(schema, table) {
   const cardCad = document.createElement('section')
   cardCad.className = 'card'
   const hCad = document.createElement('h2')
-  hCad.textContent = 'Cadastro de membro'
+  hCad.textContent = 'Cadastro de Membro'
   const idWrap = document.createElement('div')
   idWrap.className = 'field'
   const idLabel = document.createElement('label')
@@ -1423,7 +1423,16 @@ function renderMembersScreen(schema, table) {
   table.fields.forEach(f => form.appendChild(renderField(f)))
   const actions = document.createElement('div')
   actions.className = 'actions'
+  actions.style.justifyContent = 'flex-end'
   let cadastroEditMode = true
+  const actionsTop = document.createElement('div')
+  actionsTop.className = 'actions'
+  actionsTop.style.justifyContent = 'flex-end'
+  const btnAlterarTop = document.createElement('button')
+  btnAlterarTop.title = 'Alterar'
+  btnAlterarTop.setAttribute('aria-label', 'Alterar')
+  btnAlterarTop.className = 'icon-btn'
+  setButtonIcon(btnAlterarTop, 'edit')
   const btnAlterar = document.createElement('button')
   btnAlterar.title = 'Alterar'
   btnAlterar.setAttribute('aria-label', 'Alterar')
@@ -1494,15 +1503,19 @@ function renderMembersScreen(schema, table) {
       }
     })
     const hasId = !!idInput.value.trim()
-    btnAlterar.style.display = !cadastroEditMode && hasId ? '' : 'none'
+    const canAlterar = !cadastroEditMode && hasId
+    btnAlterar.disabled = !canAlterar
+    btnAlterarTop.disabled = !canAlterar
     btnSalvar.disabled = !cadastroEditMode && hasId
   }
 
-  btnAlterar.onclick = () => {
+  function handleAlterar() {
     setCadastroMode(true)
     const first = form.querySelector('input:not([type="hidden"]),select,textarea')
     if (first && typeof first.focus === 'function') first.focus()
   }
+  btnAlterar.onclick = handleAlterar
+  btnAlterarTop.onclick = handleAlterar
   function hasEmptyNumericInputError(e) {
     const msg = String(e?.message || e || '')
     const normalized = msg.replaceAll('\\"', '"')
@@ -1588,6 +1601,8 @@ function renderMembersScreen(schema, table) {
   actions.appendChild(btnSalvar)
 
   cardCad.appendChild(hCad)
+  actionsTop.appendChild(btnAlterarTop)
+  cardCad.appendChild(actionsTop)
   cardCad.appendChild(form)
   cardCad.appendChild(gruposField.wrap)
   cardCad.appendChild(cargosInternosWrap)
@@ -1602,15 +1617,30 @@ function renderMembersScreen(schema, table) {
     panelConsulta.style.display = ''; panelCadastro.style.display = 'none'
     refreshList()
   }
-  function setActiveCadastro() {
+  function clearCadastro() {
+    idInput.value = ''
+    form.querySelectorAll('input,textarea,select').forEach(i => {
+      if (i.type === 'checkbox') i.checked = false
+      else if (i.tagName === 'SELECT') { i.dataset.initialValue = ''; i.value = '' }
+      else i.value = ''
+    })
+    gruposField.setSelected([])
+    cargosInternosUI.forEach(ui => {
+      ui.cb.checked = false
+      if (ui.gruposPorCargoField) ui.gruposPorCargoField.setSelected([])
+      if (typeof ui.cb.onchange === 'function') ui.cb.onchange()
+    })
+  }
+  function setActiveCadastro(opts) {
     btnCadastro.classList.add('active'); btnConsulta.classList.remove('active')
     panelCadastro.style.display = ''; panelConsulta.style.display = 'none'
-    setCadastroMode(!idInput.value.trim())
-    loadSelectedGruposForMember(idInput.value.trim()).catch(() => {})
-    loadSelectedCargosInternosForMember(idInput.value.trim()).catch(() => {})
+    if (!opts || !opts.keep) {
+      clearCadastro()
+      setCadastroMode(true)
+    }
   }
   btnConsulta.onclick = setActiveConsulta
-  btnCadastro.onclick = setActiveCadastro
+  btnCadastro.onclick = () => setActiveCadastro()
   setActiveConsulta()
 }
 
@@ -1800,7 +1830,7 @@ function renderLoginScreen(schema, table) {
     const info = document.createElement('div')
     info.className = 'field'
     const label = document.createElement('label')
-    label.textContent = 'Usuário logado'
+    label.textContent = 'Usuário Logado'
     const v = document.createElement('div')
     v.textContent = authState.usuario || authState.userId
     info.appendChild(label)
@@ -1831,6 +1861,15 @@ function renderLoginScreen(schema, table) {
   const iUser = document.createElement('input')
   iUser.type = 'text'
   iUser.autocomplete = 'username'
+  iUser.style.textTransform = 'uppercase'
+  iUser.setAttribute('autocapitalize', 'characters')
+  iUser.setAttribute('autocorrect', 'off')
+  iUser.spellcheck = false
+  iUser.addEventListener('input', (e) => {
+    const t = e.target
+    const v = String(t.value || '').toUpperCase()
+    if (t.value !== v) t.value = v
+  })
   fUser.appendChild(lUser)
   fUser.appendChild(iUser)
 
@@ -1876,7 +1915,7 @@ function renderLoginScreen(schema, table) {
   btn.type = 'button'
   btn.textContent = 'Entrar'
   btn.onclick = async () => {
-    const login = String(iUser.value ?? '').trim()
+    const login = String(iUser.value ?? '').trim().toUpperCase()
     const pass = String(iPass.value ?? '')
     if (!login) { showStatus('Informe o usuário.', 'error'); return }
     btn.disabled = true
@@ -2054,7 +2093,7 @@ function renderUsuariosScreen(schema, table) {
   const cardCad = document.createElement('section')
   cardCad.className = 'card'
   const hCad = document.createElement('h2')
-  hCad.textContent = 'Cadastro de usuário'
+  hCad.textContent = 'Cadastro de Usuário'
   cardCad.appendChild(hCad)
   const idWrap = document.createElement('div')
   idWrap.className = 'field'
@@ -2081,6 +2120,15 @@ function renderUsuariosScreen(schema, table) {
   lUsuario.textContent = 'Usuário'
   const iUsuario = document.createElement('input')
   iUsuario.type = 'text'
+  iUsuario.style.textTransform = 'uppercase'
+  iUsuario.setAttribute('autocapitalize', 'characters')
+  iUsuario.setAttribute('autocorrect', 'off')
+  iUsuario.spellcheck = false
+  iUsuario.addEventListener('input', (e) => {
+    const t = e.target
+    const v = String(t.value || '').toUpperCase()
+    if (t.value !== v) t.value = v
+  })
   fUsuario.appendChild(lUsuario)
   fUsuario.appendChild(iUsuario)
   cardCad.appendChild(fUsuario)
@@ -2090,17 +2138,42 @@ function renderUsuariosScreen(schema, table) {
 
   const actions = document.createElement('div')
   actions.className = 'actions'
-  const btnNovo = document.createElement('button')
-  btnNovo.type = 'button'
-  btnNovo.className = 'btn-secondary'
-  btnNovo.textContent = 'Novo'
+  actions.style.justifyContent = 'flex-end'
+  let cadastroEditMode = true
+  const btnAlterar = document.createElement('button')
+  btnAlterar.type = 'button'
+  btnAlterar.title = 'Alterar'
+  btnAlterar.setAttribute('aria-label', 'Alterar')
+  btnAlterar.className = 'icon-btn'
+  setButtonIcon(btnAlterar, 'edit')
   const btnSalvar = document.createElement('button')
   btnSalvar.type = 'button'
-  btnSalvar.textContent = 'Salvar'
-  actions.appendChild(btnNovo)
+  btnSalvar.title = 'Salvar'
+  btnSalvar.setAttribute('aria-label', 'Salvar')
+  btnSalvar.className = 'icon-btn'
+  setButtonIcon(btnSalvar, 'save')
+  actions.appendChild(btnAlterar)
   actions.appendChild(btnSalvar)
   cardCad.appendChild(actions)
   panelCadastro.appendChild(cardCad)
+
+  function setCadastroMode(edit) {
+    cadastroEditMode = !!edit
+    const hasId = !!String(idInput.value ?? '').trim()
+    const disabled = !cadastroEditMode && hasId
+    sMembro.disabled = disabled
+    iUsuario.disabled = disabled
+    modsField.wrap.querySelectorAll('button,input,select,textarea').forEach(el => {
+      el.disabled = disabled
+    })
+    btnAlterar.disabled = !disabled
+    btnSalvar.disabled = disabled
+  }
+  btnAlterar.onclick = () => {
+    setCadastroMode(true)
+    const first = panelCadastro.querySelector('input:not([type="hidden"]),select,textarea')
+    if (first && typeof first.focus === 'function') first.focus()
+  }
 
   function setActiveLista() {
     btnLista.classList.add('active')
@@ -2109,23 +2182,22 @@ function renderUsuariosScreen(schema, table) {
     panelCadastro.style.display = 'none'
     refreshList().catch(e => showStatus(String(e?.message || e), 'error'))
   }
-  function setActiveCadastro() {
+  function setActiveCadastro(opts) {
     btnCadastro.classList.add('active')
     btnLista.classList.remove('active')
     panelCadastro.style.display = ''
     panelLista.style.display = 'none'
+    if (!opts || !opts.keep) {
+      idInput.value = ''
+      sMembro.value = ''
+      iUsuario.value = ''
+      modsField.state.selected = new Set()
+      modsField.setOptions(modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value))
+      setCadastroMode(true)
+    }
   }
   btnLista.onclick = setActiveLista
-  btnCadastro.onclick = setActiveCadastro
-
-  btnNovo.onclick = () => {
-    idInput.value = ''
-    sMembro.value = ''
-    iUsuario.value = ''
-    modsField.state.selected = new Set()
-    modsField.setOptions(modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value))
-    setActiveCadastro()
-  }
+  btnCadastro.onclick = () => setActiveCadastro()
 
   sMembro.onchange = () => {
     const mid = String(sMembro.value ?? '').trim()
@@ -2155,28 +2227,34 @@ function renderUsuariosScreen(schema, table) {
   }
 
   async function fillCadastro(userRow) {
-    const id = String(userRow?.[usuariosPkKey] ?? userRow?.id ?? '').trim()
-    idInput.value = id
-    const membroVal = firstExistingValue(userRow, MEMBRO_KEYS)
-    if (membroVal !== null && membroVal !== undefined) {
-      const mv = String(membroVal).trim()
-      if (mv) {
-        const mk = firstExistingKey(userRow, MEMBRO_KEYS)
-        if (mk) usuariosMembroKey = mk
-        sMembro.value = mv
+    try {
+      const id = String(userRow?.[usuariosPkKey] ?? userRow?.id ?? '').trim()
+      idInput.value = id
+      const membroVal = firstExistingValue(userRow, MEMBRO_KEYS)
+      if (membroVal !== null && membroVal !== undefined) {
+        const mv = String(membroVal).trim()
+        if (mv) {
+          const mk = firstExistingKey(userRow, MEMBRO_KEYS)
+          if (mk) usuariosMembroKey = mk
+          sMembro.value = mv
+        }
       }
+      const lk = firstExistingKey(userRow, LOGIN_KEYS)
+      if (lk) usuariosLoginKey = lk
+      iUsuario.value = String(userRow?.[usuariosLoginKey] ?? '').trim().toUpperCase()
+      const pk = firstExistingKey(userRow, PASS_KEYS)
+      if (pk) usuariosPassKey = pk
+      const mid = String(sMembro.value ?? '').trim()
+      const selected = mid ? await loadUserModuleIds(mid) : []
+      modsField.state.selected = new Set(selected)
+      const opts = modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value)
+      modsField.setOptions(opts)
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    } finally {
+      setActiveCadastro({ keep: true })
+      setCadastroMode(false)
     }
-    const lk = firstExistingKey(userRow, LOGIN_KEYS)
-    if (lk) usuariosLoginKey = lk
-    iUsuario.value = String(userRow?.[usuariosLoginKey] ?? '').trim()
-    const pk = firstExistingKey(userRow, PASS_KEYS)
-    if (pk) usuariosPassKey = pk
-    const mid = String(sMembro.value ?? '').trim()
-    const selected = mid ? await loadUserModuleIds(mid) : []
-    modsField.state.selected = new Set(selected)
-    const opts = modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value)
-    modsField.setOptions(opts)
-    setActiveCadastro()
   }
 
   async function refreshList() {
@@ -2291,9 +2369,10 @@ function renderUsuariosScreen(schema, table) {
   }
 
   btnSalvar.onclick = async () => {
+    if (!cadastroEditMode && String(idInput.value ?? '').trim()) return
     const id = String(idInput.value ?? '').trim()
     const membroId = String(sMembro.value ?? '').trim()
-    const login = String(iUsuario.value ?? '').trim()
+    const login = String(iUsuario.value ?? '').trim().toUpperCase()
     if (!membroId) { showStatus('Selecione o membro.', 'error'); return }
     if (!login) { showStatus('Informe o usuário.', 'error'); return }
 
@@ -2369,6 +2448,7 @@ function renderUsuariosScreen(schema, table) {
   }
 
   setActiveLista()
+  setCadastroMode(true)
 }
 
 function renderEbdScreen(schema, table) {
