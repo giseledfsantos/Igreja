@@ -4,14 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>IEADM-ITAPEVA</title>
-  <link rel="stylesheet" href="/styles.css?v=2026-03-25-01">
+  <link rel="stylesheet" href="/styles.css?v=2026-03-25-07">
 </head>
 <body>
+  <div class="wallpaper" aria-hidden="true"></div>
   <header class="app-header">
-    <h1>IEADM-ITAPEVA</h1>
+    <div class="header-left">
+      <h1>IEADM-ITAPEVA</h1>
+      <button id="btnToggleMenu" type="button" class="icon-btn" aria-label="Menu" title="Menu"></button>
+    </div>
   </header>
-  <nav class="tabs" id="tabs"></nav>
-  <main class="container" id="screens"></main>
-  <script src="/app.js?v=2026-03-25-01"></script>
+  <div class="layout">
+    <aside class="sidebar">
+      <nav class="tabs" id="tabs"></nav>
+    </aside>
+    <main class="container" id="screens"></main>
+  </div>
+  <script src="/app.js?v=2026-03-25-07"></script>
 </body>
 </html>

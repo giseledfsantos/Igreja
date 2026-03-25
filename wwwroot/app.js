@@ -178,8 +178,16 @@ function iconUser() {
   return svg
 }
 
-const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser }
-const APP_BUILD = '2026-03-25-01'
+function iconMenu() {
+  const svg = createSvg()
+  addPath(svg, 'M3 12h18')
+  addPath(svg, 'M3 6h18')
+  addPath(svg, 'M3 18h18')
+  return svg
+}
+
+const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
+const APP_BUILD = '2026-03-25-07'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -266,6 +274,7 @@ const DEFAULT_PASSWORD = '12345'
 const AUTH_STORAGE_KEY = 'ieadm_auth_v1'
 const LOGIN_ENABLED = true
 let authState = { userId: '', usuario: '', allowedNorm: new Set() }
+const MENU_COLLAPSED_KEY = 'ieadm_menu_collapsed_v1'
 
 function normalizeText(v) {
   return String(v ?? '')
@@ -563,6 +572,13 @@ function renderTabs(schema) {
 }
 
 function clear(node) { while (node.firstChild) node.removeChild(node.firstChild) }
+
+function renderHomeScreen() {
+  const screens = el('screens')
+  clear(screens)
+  current = null
+  document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'))
+}
 
 function renderField(field, value = '') {
   const wrap = document.createElement('div')
@@ -1669,10 +1685,7 @@ function renderLoginScreen(schema, table) {
 
   async function refreshAfterAuth() {
     renderTabs(schemaCache)
-    const tabs = Array.from(document.querySelectorAll('.tab'))
-    const firstNonLogin = tabs.find(t => normalizeText(t?.dataset?.name) !== 'login')
-    const name = String((firstNonLogin || tabs[0])?.dataset?.name ?? '').trim()
-    if (name) activateTab(name)
+    renderHomeScreen()
   }
 
   async function doLogin(login, password) {
@@ -3238,6 +3251,18 @@ window.addEventListener('DOMContentLoaded', async () => {
       right.appendChild(btnLogin)
       header.appendChild(right)
     }
+    const btnToggleMenu = document.getElementById('btnToggleMenu')
+    if (btnToggleMenu) {
+      setButtonIcon(btnToggleMenu, 'menu')
+      let collapsed = false
+      try { collapsed = localStorage.getItem(MENU_COLLAPSED_KEY) === '1' } catch {}
+      document.body.classList.toggle('menu-collapsed', collapsed)
+      btnToggleMenu.onclick = () => {
+        const next = !document.body.classList.contains('menu-collapsed')
+        document.body.classList.toggle('menu-collapsed', next)
+        try { localStorage.setItem(MENU_COLLAPSED_KEY, next ? '1' : '0') } catch {}
+      }
+    }
     document.title = 'IEADM-ITAPEVA'
     document.documentElement.dataset.build = APP_BUILD
     console.log('APP_BUILD', APP_BUILD)
@@ -3246,17 +3271,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   else clearAuth()
   schemaCache = await loadSchema()
   renderTabs(schemaCache)
-  const all = Array.isArray(schemaCache?.tables) ? schemaCache.tables : []
-  const visible = (!LOGIN_ENABLED
-    ? all.filter(t => normalizeText(t?.name) !== 'login')
-    : all.filter(t => {
-      const nm = normalizeText(t?.name)
-      if (nm === 'login') return true
-      if (!authState.userId) return false
-      if (!authState.allowedNorm || !authState.allowedNorm.size) return false
-      const ln = normalizeText(t?.label)
-      return authState.allowedNorm.has(nm) || authState.allowedNorm.has(ln)
-    }))
-  const first = visible[0]
-  if (first) activateTab(first.name)
+  if (!LOGIN_ENABLED) {
+    const all = Array.isArray(schemaCache?.tables) ? schemaCache.tables : []
+    const visible = all.filter(t => normalizeText(t?.name) !== 'login')
+    const first = visible[0]
+    if (first) activateTab(first.name)
+  } else if (!authState.userId) {
+    activateTab('login')
+  } else {
+    renderHomeScreen()
+  }
 })
