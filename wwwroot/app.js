@@ -187,7 +187,7 @@ function iconMenu() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
-const APP_BUILD = '2026-03-25-07'
+const APP_BUILD = '2026-03-25-09'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -275,6 +275,12 @@ const AUTH_STORAGE_KEY = 'ieadm_auth_v1'
 const LOGIN_ENABLED = true
 let authState = { userId: '', usuario: '', allowedNorm: new Set() }
 const MENU_COLLAPSED_KEY = 'ieadm_menu_collapsed_v1'
+
+function setMenuCollapsed(nextCollapsed) {
+  const collapsed = !!nextCollapsed
+  try { document.body.classList.toggle('menu-collapsed', collapsed) } catch {}
+  try { localStorage.setItem(MENU_COLLAPSED_KEY, collapsed ? '1' : '0') } catch {}
+}
 
 function normalizeText(v) {
   return String(v ?? '')
@@ -566,7 +572,10 @@ function renderTabs(schema) {
     b.className = 'tab'
     b.textContent = t.label || t.name
     b.dataset.name = t.name
-    b.onclick = () => activateTab(t.name)
+    b.onclick = () => {
+      activateTab(t.name)
+      setMenuCollapsed(true)
+    }
     tabs.appendChild(b)
   })
 }
@@ -578,6 +587,7 @@ function renderHomeScreen() {
   clear(screens)
   current = null
   document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'))
+  try { document.body.classList.remove('screen-login') } catch {}
 }
 
 function renderField(field, value = '') {
@@ -651,6 +661,7 @@ function collectPayload(container) {
 function renderTableScreen(schema, table) {
   const screens = el('screens')
   clear(screens)
+  try { document.body.classList.toggle('screen-login', String(table.name).toLowerCase() === 'login') } catch {}
   if (String(table.name).toLowerCase() === 'login') {
     if (!LOGIN_ENABLED) {
       const card = document.createElement('section')
@@ -3256,11 +3267,10 @@ window.addEventListener('DOMContentLoaded', async () => {
       setButtonIcon(btnToggleMenu, 'menu')
       let collapsed = false
       try { collapsed = localStorage.getItem(MENU_COLLAPSED_KEY) === '1' } catch {}
-      document.body.classList.toggle('menu-collapsed', collapsed)
+      try { document.body.classList.toggle('menu-collapsed', collapsed) } catch {}
       btnToggleMenu.onclick = () => {
         const next = !document.body.classList.contains('menu-collapsed')
-        document.body.classList.toggle('menu-collapsed', next)
-        try { localStorage.setItem(MENU_COLLAPSED_KEY, next ? '1' : '0') } catch {}
+        setMenuCollapsed(next)
       }
     }
     document.title = 'IEADM-ITAPEVA'

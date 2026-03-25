@@ -31,6 +31,10 @@ body {
 body.menu-collapsed .wallpaper {
   left: 0;
 }
+.screen-login #btnToggleMenu,
+.screen-login .header-actions {
+  display: none;
+}
 .wallpaper::after {
   content: '';
   position: absolute;
