@@ -187,7 +187,7 @@ function iconMenu() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
-const APP_BUILD = '2026-03-25-16'
+const APP_BUILD = '2026-03-25-20'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -2970,37 +2970,35 @@ function renderEbdScreen(schema, table) {
       return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     }
     const thead = document.createElement('thead')
-    const hr = document.createElement('tr')
-    ;['DATA', 'ENTRADA', 'SAIDA', 'SALDO', 'DESCRIÇÃO'].forEach(t => {
-      const th = document.createElement('th')
-      th.textContent = t
-      hr.appendChild(th)
-    })
-    thead.appendChild(hr)
+    const hr1 = document.createElement('tr')
+    const thData1 = document.createElement('th'); thData1.textContent = 'DATA'
+    const thDesc = document.createElement('th'); thDesc.textContent = 'DESCRICAO'; thDesc.colSpan = 2
+    const thBtns1 = document.createElement('th'); thBtns1.textContent = ''
+    hr1.appendChild(thData1)
+    hr1.appendChild(thDesc)
+    hr1.appendChild(thBtns1)
+    const hr2 = document.createElement('tr')
+    const thData2 = document.createElement('th'); thData2.textContent = ''
+    const thEntrada = document.createElement('th'); thEntrada.textContent = 'ENTRADA'
+    const thSaida = document.createElement('th'); thSaida.textContent = 'SAIDA'
+    const thBtns2 = document.createElement('th'); thBtns2.textContent = ''
+    hr2.appendChild(thData2)
+    hr2.appendChild(thEntrada)
+    hr2.appendChild(thSaida)
+    hr2.appendChild(thBtns2)
+    thead.appendChild(hr1)
+    thead.appendChild(hr2)
     tableCx.appendChild(thead)
 
     const tbody = document.createElement('tbody')
-    let totalIn = 0, totalOut = 0, running = 0
+    let totalIn = 0, totalOut = 0
     rows.forEach(r => {
-      const tr = document.createElement('tr')
       const dd = String(r?.data ?? '').slice(0, 10)
       const tp = String(r?.tipo ?? '').toLowerCase()
       const vv = Number(r?.valor ?? 0)
       const isOut = tp === 'saida'
-      const inVal = isOut ? '' : vv
-      const outVal = isOut ? vv : ''
       if (isOut) totalOut += vv
       else totalIn += vv
-      running += isOut ? -vv : vv
-
-      const tdData = document.createElement('td'); tdData.textContent = dd || ''
-      const tdIn = document.createElement('td'); tdIn.textContent = money(inVal)
-      const tdOut = document.createElement('td'); tdOut.textContent = money(outVal)
-      const tdSaldo = document.createElement('td'); tdSaldo.textContent = money(running)
-      const tdDesc = document.createElement('td'); tdDesc.className = 'caixa-desc'
-
-      const descText = document.createElement('div')
-      descText.textContent = String(r?.descricao ?? '')
 
       const actions = document.createElement('div'); actions.className = 'grid-actions'
       const btnEdit = document.createElement('button'); btnEdit.type = 'button'; btnEdit.className = 'icon-btn'; btnEdit.title = 'Editar'; setButtonIcon(btnEdit, 'edit')
@@ -3022,18 +3020,33 @@ function renderEbdScreen(schema, table) {
         if (!ok) return
         try { await apiDelete('ebd_caixa', 'id', id); refreshList() } catch (e) { showStatus(String(e?.message || e), 'error') }
       }
-      tr.onclick = () => btnEdit.onclick()
-
       actions.appendChild(btnEdit); actions.appendChild(btnDel)
-      tdDesc.appendChild(descText)
-      tdDesc.appendChild(actions)
 
-      tr.appendChild(tdData)
-      tr.appendChild(tdIn)
-      tr.appendChild(tdOut)
-      tr.appendChild(tdSaldo)
-      tr.appendChild(tdDesc)
-      tbody.appendChild(tr)
+      const tr1 = document.createElement('tr')
+      const tr2 = document.createElement('tr')
+
+      const tdData = document.createElement('td'); tdData.textContent = dd || ''; tdData.rowSpan = 2
+      const tdDesc = document.createElement('td')
+      tdDesc.colSpan = 2
+      tdDesc.className = 'caixa-desc'
+      tdDesc.textContent = String(r?.descricao ?? '')
+      const tdBtns = document.createElement('td'); tdBtns.rowSpan = 2; tdBtns.className = 'caixa-actions'
+      tdBtns.appendChild(actions)
+
+      const tdEntrada = document.createElement('td'); tdEntrada.textContent = isOut ? '' : money(vv)
+      const tdSaida = document.createElement('td'); tdSaida.textContent = isOut ? money(vv) : ''
+
+      tr1.appendChild(tdData)
+      tr1.appendChild(tdDesc)
+      tr1.appendChild(tdBtns)
+      tr2.appendChild(tdEntrada)
+      tr2.appendChild(tdSaida)
+
+      tr1.onclick = () => btnEdit.onclick()
+      tr2.onclick = () => btnEdit.onclick()
+
+      tbody.appendChild(tr1)
+      tbody.appendChild(tr2)
     })
     tableCx.appendChild(tbody)
     const saldo = totalIn - totalOut

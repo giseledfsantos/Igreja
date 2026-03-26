@@ -433,13 +433,12 @@ button.danger { background: var(--danger); color: white; }
 .caixa-desc {
   text-align: left;
   min-width: 260px;
+  white-space: normal;
 }
-.caixa-desc {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
+.caixa-actions { width: 92px; }
+.caixa-actions .grid-actions { gap: 4px; }
+.caixa-actions .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
+.caixa-actions .icon-btn svg { width: 16px; height: 16px; }
 .saldo {
   margin-top: 10px;
   font-weight: 800;
@@ -450,6 +449,8 @@ button.danger { background: var(--danger); color: white; }
   .ebd-sticky-1 { min-width: 160px; }
   .ebd-turma { width: 100px; }
   .caixa-desc { min-width: 180px; }
+  .caixa-actions .icon-btn { width: 28px; height: 28px; }
+  .caixa-actions .icon-btn svg { width: 14px; height: 14px; }
 }
 .ebd-table td.ebd-sticky {
   text-align: left;
