@@ -451,6 +451,8 @@ button.danger { background: var(--danger); color: white; }
   .caixa-desc { min-width: 180px; }
   .caixa-actions .icon-btn { width: 28px; height: 28px; }
   .caixa-actions .icon-btn svg { width: 14px; height: 14px; }
+  .ebd-one-day .ebd-day { min-width: min(240px, 70vw); }
+  .ebd-one-day .ebd-cell { min-width: min(240px, 70vw); }
 }
 .ebd-table td.ebd-sticky {
   text-align: left;

@@ -187,7 +187,7 @@ function iconMenu() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
-const APP_BUILD = '2026-03-25-20'
+const APP_BUILD = '2026-03-25-21'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -2527,7 +2527,7 @@ function renderEbdScreen(schema, table) {
   card.appendChild(h)
 
   const wrap = document.createElement('div')
-  wrap.className = 'ebd-wrap'
+  wrap.className = 'ebd-wrap ebd-one-day'
   const tableEl = document.createElement('table')
   tableEl.className = 'ebd-table'
   wrap.appendChild(tableEl)
@@ -2677,6 +2677,8 @@ function renderEbdScreen(schema, table) {
     sundays.forEach(s => {
       const th = document.createElement('th')
       th.textContent = String(s.day)
+      th.className = 'ebd-day'
+      th.dataset.iso = s.iso
       rowDay.appendChild(th)
     })
     thead.appendChild(rowMonth)
@@ -2696,6 +2698,18 @@ function renderEbdScreen(schema, table) {
       const h = Math.ceil(headRow1.getBoundingClientRect().height || 0)
       tableEl.style.setProperty('--ebd-head1', `${h}px`)
     }
+  }
+
+  function focusNearestDay() {
+    let targetIso = ''
+    for (let i = sundays.length - 1; i >= 0; i--) {
+      if (sundays[i].iso <= todayIso) { targetIso = sundays[i].iso; break }
+    }
+    if (!targetIso && sundays.length) targetIso = sundays[0].iso
+    if (!targetIso) return
+    const th = tableEl.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
+    if (!th) return
+    try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
   }
 
   async function load() {
@@ -2885,6 +2899,7 @@ function renderEbdScreen(schema, table) {
     tbody.appendChild(frag)
     tableEl.appendChild(tbody)
     applyStickyOffsets()
+    focusNearestDay()
     showStatus('Pronto.', 'success')
   }
 
@@ -3129,7 +3144,7 @@ function renderCirculoOracaoScreen(schema, table) {
   card.appendChild(h)
 
   const wrap = document.createElement('div')
-  wrap.className = 'ebd-wrap'
+  wrap.className = 'ebd-wrap ebd-one-day'
   const tableEl = document.createElement('table')
   tableEl.className = 'ebd-table'
   wrap.appendChild(tableEl)
@@ -3238,6 +3253,8 @@ function renderCirculoOracaoScreen(schema, table) {
     mondays.forEach(s => {
       const th = document.createElement('th')
       th.textContent = String(s.day)
+      th.className = 'ebd-day'
+      th.dataset.iso = s.iso
       rowDay.appendChild(th)
     })
     thead.appendChild(rowMonth)
@@ -3251,6 +3268,18 @@ function renderCirculoOracaoScreen(schema, table) {
       const h = Math.ceil(headRow1.getBoundingClientRect().height || 0)
       tableEl.style.setProperty('--ebd-head1', `${h}px`)
     }
+  }
+
+  function focusNearestDay() {
+    let targetIso = ''
+    for (let i = mondays.length - 1; i >= 0; i--) {
+      if (mondays[i].iso <= todayIso) { targetIso = mondays[i].iso; break }
+    }
+    if (!targetIso && mondays.length) targetIso = mondays[0].iso
+    if (!targetIso) return
+    const th = tableEl.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
+    if (!th) return
+    try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
   }
 
   async function load() {
@@ -3419,6 +3448,7 @@ function renderCirculoOracaoScreen(schema, table) {
     tbody.appendChild(frag)
     tableEl.appendChild(tbody)
     applyStickyOffsets()
+    focusNearestDay()
     showStatus('Pronto.', 'success')
   }
 
