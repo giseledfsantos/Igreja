@@ -436,6 +436,8 @@ button.danger { background: var(--danger); color: white; }
   white-space: normal;
 }
 .caixa-actions { width: 92px; }
+.caixa-actions { text-align: center; vertical-align: middle; }
+.caixa-actions .grid-actions { justify-content: center; }
 .caixa-actions .grid-actions { gap: 4px; }
 .caixa-actions .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
 .caixa-actions .icon-btn svg { width: 16px; height: 16px; }
