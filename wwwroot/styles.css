@@ -521,13 +521,32 @@ button.danger { background: var(--danger); color: white; }
     line-height: 44px;
     padding: 0;
   }
+  .ebd-one-day .ebd-day,
+  .ebd-report .ebd-day {
+    position: relative;
+    line-height: 1;
+    padding-top: 16px;
+  }
+  .ebd-one-day .ebd-day::before,
+  .ebd-report .ebd-day::before {
+    content: attr(data-month);
+    position: absolute;
+    top: 4px;
+    left: 0;
+    right: 0;
+    font-size: 9px;
+    line-height: 1;
+    color: var(--muted);
+  }
   .ebd-report .ebd-day,
   .ebd-report .ebd-report-cell {
     width: 44px;
     min-width: 44px;
     height: 44px;
-    line-height: 44px;
     padding: 0;
+  }
+  .ebd-report .ebd-report-cell {
+    line-height: 44px;
   }
 }
 .ebd-table td.ebd-sticky {

@@ -2704,6 +2704,7 @@ function renderEbdScreen(schema, table) {
       th.textContent = String(s.day)
       th.className = 'ebd-day'
       th.dataset.iso = s.iso
+      th.dataset.month = MONTHS[s.month]
       rowDay.appendChild(th)
     })
     thead.appendChild(rowMonth)
@@ -2790,6 +2791,7 @@ function renderEbdScreen(schema, table) {
       th.textContent = String(s.day)
       th.className = 'ebd-day'
       th.dataset.iso = s.iso
+      th.dataset.month = MONTHS[s.month]
       rowDay.appendChild(th)
     })
 
@@ -3680,6 +3682,7 @@ function renderCirculoOracaoScreen(schema, table) {
       th.textContent = String(s.day)
       th.className = 'ebd-day'
       th.dataset.iso = s.iso
+      th.dataset.month = MONTHS[s.month]
       rowDay.appendChild(th)
     })
     thead.appendChild(rowMonth)
