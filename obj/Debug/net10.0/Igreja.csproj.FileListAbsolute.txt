@@ -30,6 +30,6 @@ D:\Dev\Igreja\obj\Debug\net10.0\ref\Igreja.dll
 D:\Dev\Igreja\obj\Debug\net10.0\Igreja.sourcelink.json
 D:\Dev\Igreja\bin\Debug\net10.0\vercel.json
 D:\Dev\Igreja\obj\Debug\net10.0\compressed\jh633y69c6-{0}-d61l5sfxtm-d61l5sfxtm.gz
-D:\Dev\Igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-36ojfmem81-36ojfmem81.gz
-D:\Dev\Igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-2cn9b8ehjw-2cn9b8ehjw.gz
-D:\Dev\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-1bsq5w5km5-1bsq5w5km5.gz
+D:\Dev\Igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-c93vys24ob-c93vys24ob.gz
+D:\Dev\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-ow6i7iliwg-ow6i7iliwg.gz
+D:\Dev\Igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-j4ay1kdlv4-j4ay1kdlv4.gz

@@ -187,7 +187,7 @@ function iconMenu() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
-const APP_BUILD = '2026-03-25-26'
+const APP_BUILD = '2026-03-25-31'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -1201,9 +1201,9 @@ function renderMembersScreen(schema, table) {
   let cargosInternosIdKey = 'id'
   let cargosInternosLabelKey = 'nome'
   let cargosInternosPorGrupoKey = 'por_grupo'
-  const membrosCargosInternosMembroKey = 'id_membro'
-  const membrosCargosInternosCargoKey = 'id_cargos_internos'
-  const membrosCargosInternosGrupoKey = 'id_grupo'
+  let membrosCargosInternosMembroKey = 'id_membro'
+  let membrosCargosInternosCargoKey = 'id_cargos_internos'
+  let membrosCargosInternosGrupoKey = 'id_grupo'
   const cargosInternosUI = new Map()
 
   async function ensureGruposLoaded() {
@@ -1312,9 +1312,20 @@ function renderMembersScreen(schema, table) {
   }
   ensureCargosInternosLoaded().catch(() => {})
 
+  async function ensureMembrosCargosInternosKeysLoaded() {
+    try {
+      const rows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, { select: '*', limit: '1' })
+      const sample = (Array.isArray(rows) ? rows : [])[0] || {}
+      membrosCargosInternosMembroKey = pickKey(sample, ['id_membro', 'membro_id', 'membros_id', 'idAluno', 'aluno_id'])
+      membrosCargosInternosCargoKey = pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'cargos_internos_id', 'cargo_id'])
+      membrosCargosInternosGrupoKey = pickKey(sample, ['id_grupo', 'grupo_id', 'grupos_id', 'grupo'])
+    } catch {}
+  }
+
   async function loadSelectedCargosInternosForMember(memberId) {
     await ensureGruposLoaded()
     await ensureCargosInternosLoaded()
+    await ensureMembrosCargosInternosKeysLoaded()
     if (!memberId) {
       cargosInternosUI.forEach(ui => {
         ui.cb.checked = false
@@ -1322,10 +1333,7 @@ function renderMembersScreen(schema, table) {
       })
       return
     }
-    const rows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, {
-      select: `${membrosCargosInternosCargoKey},${membrosCargosInternosGrupoKey}`,
-      [membrosCargosInternosMembroKey]: `eq.${memberId}`
-    })
+    const rows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, { select: '*', [membrosCargosInternosMembroKey]: `eq.${memberId}` })
     const byCargo = new Map()
     ;(Array.isArray(rows) ? rows : []).forEach(r => {
       const cid = String(r?.[membrosCargosInternosCargoKey] ?? '')
@@ -1347,6 +1355,7 @@ function renderMembersScreen(schema, table) {
 
   async function saveMemberCargosInternos(memberId) {
     if (!memberId) return
+    await ensureMembrosCargosInternosKeysLoaded()
     const memberVal = /^\d+$/.test(String(memberId)) ? Number(memberId) : memberId
     const desired = new Set()
     const desiredRows = []
@@ -1370,14 +1379,12 @@ function renderMembersScreen(schema, table) {
         desired.add(k)
         desiredRows.push({
           [membrosCargosInternosMembroKey]: memberVal,
-          [membrosCargosInternosCargoKey]: /^\d+$/.test(String(cid)) ? Number(cid) : cid
+          [membrosCargosInternosCargoKey]: /^\d+$/.test(String(cid)) ? Number(cid) : cid,
+          [membrosCargosInternosGrupoKey]: null
         })
       }
     })
-    const existingRows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, {
-      select: `${membrosCargosInternosMembroKey},${membrosCargosInternosCargoKey},${membrosCargosInternosGrupoKey}`,
-      [membrosCargosInternosMembroKey]: `eq.${memberId}`
-    })
+    const existingRows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, { select: '*', [membrosCargosInternosMembroKey]: `eq.${memberId}` })
     const existing = new Set()
     const existingList = Array.isArray(existingRows) ? existingRows : []
     const filteredExistingList = existingList.some(r => String(r?.[membrosCargosInternosMembroKey] ?? '') && String(r?.[membrosCargosInternosMembroKey] ?? '') !== String(memberId))
