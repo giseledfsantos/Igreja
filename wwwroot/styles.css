@@ -521,6 +521,14 @@ button.danger { background: var(--danger); color: white; }
     line-height: 44px;
     padding: 0;
   }
+  .ebd-report .ebd-day,
+  .ebd-report .ebd-report-cell {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    line-height: 44px;
+    padding: 0;
+  }
 }
 .ebd-table td.ebd-sticky {
   text-align: left;

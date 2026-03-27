@@ -2547,7 +2547,7 @@ function renderEbdScreen(schema, table) {
   hRel.textContent = 'Relatórios'
   cardRel.appendChild(hRel)
   const wrapRel = document.createElement('div')
-  wrapRel.className = 'ebd-wrap'
+  wrapRel.className = 'ebd-wrap ebd-report'
   const tableRel = document.createElement('table')
   tableRel.className = 'ebd-table'
   wrapRel.appendChild(tableRel)
@@ -2999,6 +2999,7 @@ function renderEbdScreen(schema, table) {
       let rowTotal = 0
       sundays.forEach(s => {
         const td = document.createElement('td')
+        td.className = 'ebd-report-cell'
         const v = isTotalRow ? turmas.reduce((acc, t) => acc + presenceCount(t.id, s.iso), 0) : presenceCount(turmaId, s.iso)
         rowTotal += v
         td.textContent = String(v || 0)
@@ -3022,6 +3023,7 @@ function renderEbdScreen(schema, table) {
 
       sundays.forEach(s => {
         const td = document.createElement('td')
+        td.className = 'ebd-report-cell'
         if (isTotalRow) {
           const v = sumInputsAllTurmas(s.iso, field)
           rowTotal += v
