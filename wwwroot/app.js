@@ -187,7 +187,7 @@ function iconMenu() {
 }
 
 const ICONS = { edit: iconEdit, trash: iconTrash, save: iconSave, eye: iconEye, eyeOff: iconEyeOff, user: iconUser, menu: iconMenu }
-const APP_BUILD = '2026-03-25-23'
+const APP_BUILD = '2026-03-25-26'
 
 function setButtonIcon(button, name) {
   const factory = ICONS[name]
@@ -2507,17 +2507,24 @@ function renderEbdScreen(schema, table) {
   const btnFreq = document.createElement('button')
   btnFreq.className = 'subtab active'
   btnFreq.textContent = 'Frequência'
+  const btnRel = document.createElement('button')
+  btnRel.className = 'subtab'
+  btnRel.textContent = 'Relatórios'
   const btnCaixa = document.createElement('button')
   btnCaixa.className = 'subtab'
   btnCaixa.textContent = 'Caixa'
   subtabs.appendChild(btnFreq)
+  subtabs.appendChild(btnRel)
   subtabs.appendChild(btnCaixa)
   screens.appendChild(subtabs)
 
   const panelFreq = document.createElement('div')
+  const panelRel = document.createElement('div')
   const panelCaixa = document.createElement('div')
+  panelRel.style.display = 'none'
   panelCaixa.style.display = 'none'
   screens.appendChild(panelFreq)
+  screens.appendChild(panelRel)
   screens.appendChild(panelCaixa)
 
   const card = document.createElement('section')
@@ -2533,6 +2540,19 @@ function renderEbdScreen(schema, table) {
   wrap.appendChild(tableEl)
   card.appendChild(wrap)
   panelFreq.appendChild(card)
+
+  const cardRel = document.createElement('section')
+  cardRel.className = 'card'
+  const hRel = document.createElement('h2')
+  hRel.textContent = 'Relatórios'
+  cardRel.appendChild(hRel)
+  const wrapRel = document.createElement('div')
+  wrapRel.className = 'ebd-wrap'
+  const tableRel = document.createElement('table')
+  tableRel.className = 'ebd-table'
+  wrapRel.appendChild(tableRel)
+  cardRel.appendChild(wrapRel)
+  panelRel.appendChild(cardRel)
 
   const MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
   function pad2(n) { return String(n).padStart(2, '0') }
@@ -2573,6 +2593,7 @@ function renderEbdScreen(schema, table) {
   const EBD_TURMAS_TABLE = 'ebd_turmas'
   const EBD_TURMAS_MEMBROS_TABLE = 'ebd_turmas_membros'
   const EBD_PRESENCA_MEMBROS_TABLE = 'ebd_presenca_membros'
+  const EBD_RELATORIOS_TABLE = 'ebd_relatorios'
   let turmasCache = []
   let turmasIdKey = 'id'
   let turmasLabelKey = 'nome'
@@ -2582,6 +2603,10 @@ function renderEbdScreen(schema, table) {
   let presencaMembrosDataKey = 'data'
   const turmasByMembro = new Map()
   const presSet = new Set()
+  let membrosCache = []
+  let turmaOptionsCache = []
+  const relByTurmaDay = new Map()
+  const relSaveTimers = new Map()
 
   const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'id_aluno', 'aluno_id', 'idAluno', 'membro']
   const TURMA_KEYS = ['id_turma', 'turma_id', 'turmas_id', 'idTurma', 'ebd_turma_id', 'id_ebd_turma', 'ebdTurmaId', 'turma']
@@ -2712,6 +2737,373 @@ function renderEbdScreen(schema, table) {
     try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
   }
 
+  function applyHeaderOffsetForTable(t) {
+    const headRow1 = t.querySelector('thead tr')
+    if (headRow1) {
+      const h = Math.ceil(headRow1.getBoundingClientRect().height || 0)
+      t.style.setProperty('--ebd-head1', `${h}px`)
+    }
+  }
+
+  function focusNearestDayForTable(t, days) {
+    let targetIso = ''
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (days[i].iso <= todayIso) { targetIso = days[i].iso; break }
+    }
+    if (!targetIso && days.length) targetIso = days[0].iso
+    if (!targetIso) return
+    const th = t.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
+    if (!th) return
+    try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
+  }
+
+  function buildReportHeader() {
+    const thead = document.createElement('thead')
+    const rowMonth = document.createElement('tr')
+    const rowDay = document.createElement('tr')
+
+    const thTurma = document.createElement('th')
+    thTurma.textContent = 'Turma'
+    thTurma.className = 'ebd-sticky ebd-sticky-1'
+    thTurma.rowSpan = 2
+    rowMonth.appendChild(thTurma)
+
+    let i = 0
+    while (i < sundays.length) {
+      const month = sundays[i].month
+      let j = i
+      while (j < sundays.length && sundays[j].month === month) j += 1
+      const th = document.createElement('th')
+      th.textContent = MONTHS[month]
+      th.colSpan = j - i
+      rowMonth.appendChild(th)
+      i = j
+    }
+
+    const thTotal = document.createElement('th')
+    thTotal.textContent = 'TOTAL'
+    thTotal.rowSpan = 2
+    rowMonth.appendChild(thTotal)
+
+    sundays.forEach(s => {
+      const th = document.createElement('th')
+      th.textContent = String(s.day)
+      th.className = 'ebd-day'
+      th.dataset.iso = s.iso
+      rowDay.appendChild(th)
+    })
+
+    thead.appendChild(rowMonth)
+    thead.appendChild(rowDay)
+    return thead
+  }
+
+  function relKey(turmaId, iso) {
+    return `${String(turmaId)}|${String(iso)}`
+  }
+
+  function parseDecimal(raw) {
+    const s = String(raw ?? '').trim()
+    if (!s) return null
+    const n = Number(s.replace(',', '.'))
+    if (!Number.isFinite(n)) return null
+    return n
+  }
+
+  function parseIntNonNeg(raw) {
+    const s = String(raw ?? '').trim()
+    if (!s) return null
+    const n = Number(s.replace(',', '.'))
+    if (!Number.isFinite(n)) return null
+    const i = Math.trunc(n)
+    if (i < 0) return null
+    return i
+  }
+
+  function getRelRow(turmaId, iso) {
+    return relByTurmaDay.get(relKey(turmaId, iso)) || null
+  }
+
+  function getRelNumber(turmaId, iso, field) {
+    const row = getRelRow(turmaId, iso)
+    if (!row) return 0
+    const dbField = field === 'ofertas' ? 'oferta' : field
+    const v = row?.[dbField]
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+
+  function setRelValueFromInput(turmaId, iso, field, rawValue) {
+    const dbField = field === 'ofertas' ? 'oferta' : field
+    const next = getRelRow(turmaId, iso) || { id: null, id_turma: String(turmaId), data: String(iso), oferta: null, biblias: null, revistas: null }
+    if (dbField === 'oferta') next.oferta = parseDecimal(rawValue)
+    if (dbField === 'biblias') next.biblias = parseIntNonNeg(rawValue)
+    if (dbField === 'revistas') next.revistas = parseIntNonNeg(rawValue)
+    relByTurmaDay.set(relKey(turmaId, iso), next)
+  }
+
+  function isRelRowEmpty(row) {
+    if (!row) return true
+    const of = row.oferta
+    const bi = row.biblias
+    const re = row.revistas
+    const hasOferta = of !== null && of !== undefined && of !== '' && Number.isFinite(Number(of)) && Number(of) !== 0
+    const hasBiblias = bi !== null && bi !== undefined && bi !== '' && Number.isFinite(Number(bi)) && Number(bi) !== 0
+    const hasRevistas = re !== null && re !== undefined && re !== '' && Number.isFinite(Number(re)) && Number(re) !== 0
+    return !(hasOferta || hasBiblias || hasRevistas)
+  }
+
+  async function persistRelRow(turmaId, iso) {
+    const k = relKey(turmaId, iso)
+    const row = getRelRow(turmaId, iso)
+    if (!row) return
+
+    const tid = String(turmaId ?? '').trim()
+    const tidVal = /^\d+$/.test(tid) ? Number(tid) : tid
+    const payload = {
+      id_turma: tidVal,
+      data: String(iso),
+      oferta: row.oferta === null || row.oferta === undefined || row.oferta === '' ? null : Number(row.oferta),
+      biblias: row.biblias === null || row.biblias === undefined || row.biblias === '' ? null : Number(row.biblias),
+      revistas: row.revistas === null || row.revistas === undefined || row.revistas === '' ? null : Number(row.revistas)
+    }
+
+    if (row.id && isRelRowEmpty(row)) {
+      try {
+        await apiDelete(EBD_RELATORIOS_TABLE, 'id', row.id)
+        relByTurmaDay.delete(k)
+      } catch (e) {
+        showStatus(String(e?.message || e), 'error')
+      }
+      return
+    }
+
+    if (row.id) {
+      try {
+        const res = await apiUpdate(EBD_RELATORIOS_TABLE, 'id', row.id, payload)
+        const updated = Array.isArray(res) ? (res[0] || null) : (res || null)
+        if (updated) {
+          const dt = dateOnly(updated?.data ?? iso)
+          relByTurmaDay.set(k, {
+            id: updated?.id ?? row.id,
+            id_turma: String(updated?.id_turma ?? tid).trim(),
+            data: dt,
+            oferta: updated?.oferta ?? payload.oferta,
+            biblias: updated?.biblias ?? payload.biblias,
+            revistas: updated?.revistas ?? payload.revistas
+          })
+        }
+      } catch (e) {
+        showStatus(String(e?.message || e), 'error')
+      }
+      return
+    }
+
+    if (isRelRowEmpty(row)) return
+
+    try {
+      const res = await apiCreate(EBD_RELATORIOS_TABLE, [payload])
+      const created = Array.isArray(res) ? (res[0] || null) : (res || null)
+      if (created) {
+        relByTurmaDay.set(k, {
+          id: created?.id ?? null,
+          id_turma: String(created?.id_turma ?? tid).trim(),
+          data: dateOnly(created?.data ?? iso),
+          oferta: created?.oferta ?? payload.oferta,
+          biblias: created?.biblias ?? payload.biblias,
+          revistas: created?.revistas ?? payload.revistas
+        })
+      }
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    }
+  }
+
+  function schedulePersistRelRow(turmaId, iso) {
+    const k = relKey(turmaId, iso)
+    if (relSaveTimers.has(k)) clearTimeout(relSaveTimers.get(k))
+    const t = setTimeout(() => {
+      relSaveTimers.delete(k)
+      persistRelRow(turmaId, iso)
+    }, 800)
+    relSaveTimers.set(k, t)
+  }
+
+  function refreshReports() {
+    tableRel.innerHTML = ''
+    tableRel.appendChild(buildReportHeader())
+
+    const turmas = (turmaOptionsCache || [])
+      .filter(t => String(t?.value ?? '').trim())
+      .map(t => ({ id: String(t.value).trim(), label: String(t.label ?? t.value).trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }))
+
+    const sundaySet = new Set(sundays.map(x => x.iso))
+    const countsByTurmaDay = new Map()
+    for (const entry of presSet) {
+      const parts = String(entry).split('|')
+      const mid = String(parts[0] ?? '').trim()
+      const dt = String(parts[1] ?? '').trim()
+      if (!mid || !dt) continue
+      if (!sundaySet.has(dt)) continue
+      const tid = String(turmasByMembro.get(mid) ?? '').trim()
+      if (!tid) continue
+      const k = `${tid}|${dt}`
+      countsByTurmaDay.set(k, (countsByTurmaDay.get(k) || 0) + 1)
+    }
+
+    function presenceCount(turmaId, iso) {
+      return countsByTurmaDay.get(`${turmaId}|${iso}`) || 0
+    }
+
+    function money(v) {
+      const n = Number(v)
+      if (!Number.isFinite(n)) return 'R$ 0,00'
+      return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }
+
+    function formatField(field, v) {
+      if (field === 'ofertas') return money(v)
+      const n = Number(v)
+      if (!Number.isFinite(n)) return '0'
+      return String(Math.trunc(n))
+    }
+
+    function sumInputsAllTurmas(iso, field) {
+      let s = 0
+      turmas.forEach(t => { s += getRelNumber(t.id, iso, field) })
+      return s
+    }
+
+    const tbody = document.createElement('tbody')
+
+    function addGroupHeader(label) {
+      const tr = document.createElement('tr')
+      tr.className = 'ebd-group'
+      const td0 = document.createElement('td')
+      td0.textContent = label
+      td0.className = 'ebd-sticky ebd-sticky-1'
+      const td = document.createElement('td')
+      td.colSpan = sundays.length + 1
+      tr.appendChild(td0)
+      tr.appendChild(td)
+      tbody.appendChild(tr)
+    }
+
+    function addPresenceRow(label, turmaId, isTotalRow) {
+      const tr = document.createElement('tr')
+      const tdLabel = document.createElement('td')
+      tdLabel.textContent = label
+      tdLabel.className = 'ebd-sticky ebd-sticky-1'
+      tr.appendChild(tdLabel)
+      let rowTotal = 0
+      sundays.forEach(s => {
+        const td = document.createElement('td')
+        const v = isTotalRow ? turmas.reduce((acc, t) => acc + presenceCount(t.id, s.iso), 0) : presenceCount(turmaId, s.iso)
+        rowTotal += v
+        td.textContent = String(v || 0)
+        tr.appendChild(td)
+      })
+      const tdTot = document.createElement('td')
+      tdTot.textContent = String(rowTotal || 0)
+      tr.appendChild(tdTot)
+      tbody.appendChild(tr)
+    }
+
+    function addInputRow(label, turmaId, field, isTotalRow) {
+      const tr = document.createElement('tr')
+      const tdLabel = document.createElement('td')
+      tdLabel.textContent = label
+      tdLabel.className = 'ebd-sticky ebd-sticky-1'
+      tr.appendChild(tdLabel)
+
+      let rowTotal = 0
+      const totalsRowCells = new Map()
+
+      sundays.forEach(s => {
+        const td = document.createElement('td')
+        if (isTotalRow) {
+          const v = sumInputsAllTurmas(s.iso, field)
+          rowTotal += v
+          td.textContent = formatField(field, v)
+          totalsRowCells.set(s.iso, td)
+        } else {
+          const inp = document.createElement('input')
+          inp.type = 'number'
+          inp.min = '0'
+          if (field === 'ofertas') {
+            inp.step = '0.01'
+            inp.inputMode = 'decimal'
+          } else {
+            inp.step = '1'
+            inp.inputMode = 'numeric'
+          }
+          inp.className = 'report-input'
+          const row = getRelRow(turmaId, s.iso)
+          const dbField = field === 'ofertas' ? 'oferta' : field
+          const stored = row ? row?.[dbField] : null
+          inp.value = stored === null || stored === undefined ? '' : String(stored)
+          rowTotal += getRelNumber(turmaId, s.iso, field)
+          inp.oninput = () => {
+            setRelValueFromInput(turmaId, s.iso, field, inp.value)
+            schedulePersistRelRow(turmaId, s.iso)
+            if (rowTotalCell) rowTotalCell.textContent = formatField(field, sumRowInputs(turmaId, field) || 0)
+            if (totalRowUpdaters[field] && totalRowUpdaters[field].cells.has(s.iso)) {
+              totalRowUpdaters[field].cells.get(s.iso).textContent = formatField(field, sumInputsAllTurmas(s.iso, field) || 0)
+              totalRowUpdaters[field].totalCell.textContent = formatField(field, sumAllDaysAllTurmas(field) || 0)
+            }
+          }
+          inp.onblur = () => { persistRelRow(turmaId, s.iso) }
+          td.appendChild(inp)
+        }
+        tr.appendChild(td)
+      })
+
+      function sumRowInputs(tid, f) {
+        let total = 0
+        sundays.forEach(s => { total += getRelNumber(tid, s.iso, f) })
+        return total
+      }
+
+      const rowTotalCell = document.createElement('td')
+      rowTotalCell.textContent = formatField(field, rowTotal || 0)
+      tr.appendChild(rowTotalCell)
+      tbody.appendChild(tr)
+
+      return { tr, totalsRowCells, totalCell: rowTotalCell }
+    }
+
+    function sumAllDaysAllTurmas(field) {
+      let total = 0
+      sundays.forEach(s => { total += sumInputsAllTurmas(s.iso, field) })
+      return total
+    }
+
+    const totalRowUpdaters = {}
+
+    turmas.forEach(t => {
+      addGroupHeader(t.label)
+      addPresenceRow('Presentes', t.id, false)
+      addInputRow('Oferta', t.id, 'ofertas', false)
+      addInputRow('Bíblias', t.id, 'biblias', false)
+      addInputRow('Revistas', t.id, 'revistas', false)
+    })
+
+    addGroupHeader('Total')
+    addPresenceRow('Presentes', '', true)
+    const totOferta = addInputRow('Oferta', '', 'ofertas', true)
+    const totBibs = addInputRow('Bíblias', '', 'biblias', true)
+    const totRevs = addInputRow('Revistas', '', 'revistas', true)
+
+    totalRowUpdaters.ofertas = { cells: totOferta.totalsRowCells, totalCell: totOferta.totalCell }
+    totalRowUpdaters.biblias = { cells: totBibs.totalsRowCells, totalCell: totBibs.totalCell }
+    totalRowUpdaters.revistas = { cells: totRevs.totalsRowCells, totalCell: totRevs.totalCell }
+
+    tableRel.appendChild(tbody)
+    applyHeaderOffsetForTable(tableRel)
+    focusNearestDayForTable(tableRel, sundays)
+  }
+
   async function load() {
     showStatus('Carregando...', 'success')
     let membros = []
@@ -2725,6 +3117,7 @@ function renderEbdScreen(schema, table) {
       showStatus(String(e?.message || e), 'error')
       membros = []
     }
+    membrosCache = membros
 
     const turmaOptions = [{ value: '', label: '' }]
     try {
@@ -2743,6 +3136,7 @@ function renderEbdScreen(schema, table) {
       turmasCache = []
       showStatus(String(e?.message || e), 'error')
     }
+    turmaOptionsCache = turmaOptions.slice()
 
     turmasByMembro.clear()
     try {
@@ -2784,6 +3178,32 @@ function renderEbdScreen(schema, table) {
       })
     } catch (e) {
       presSet.clear()
+      showStatus(String(e?.message || e), 'error')
+    }
+
+    relByTurmaDay.clear()
+    try {
+      const rows = await apiGet(EBD_RELATORIOS_TABLE, {
+        select: '*',
+        data: [`gte.${year}-01-01`, `lte.${year}-12-31`]
+      })
+      const list = Array.isArray(rows) ? rows : []
+      list.forEach(r => {
+        const tid = String(r?.id_turma ?? '').trim()
+        const dt = dateOnly(r?.data ?? '')
+        if (!tid || !dt) return
+        if (!dt.startsWith(`${year}-`)) return
+        relByTurmaDay.set(relKey(tid, dt), {
+          id: r?.id ?? null,
+          id_turma: tid,
+          data: dt,
+          oferta: r?.oferta ?? null,
+          biblias: r?.biblias ?? null,
+          revistas: r?.revistas ?? null
+        })
+      })
+    } catch (e) {
+      relByTurmaDay.clear()
       showStatus(String(e?.message || e), 'error')
     }
 
@@ -2830,6 +3250,7 @@ function renderEbdScreen(schema, table) {
           showStatus(String(e?.message || e), 'error')
           sel.value = String(turmasByMembro.get(m.id) ?? '')
         }
+        if (panelRel.style.display !== 'none') refreshReports()
       }
       tdTurma.appendChild(sel)
       tr.appendChild(tdTurma)
@@ -3089,9 +3510,11 @@ function renderEbdScreen(schema, table) {
   clearForm()
   refreshList()
 
-  function setActiveFreq() { btnFreq.classList.add('active'); btnCaixa.classList.remove('active'); panelFreq.style.display=''; panelCaixa.style.display='none' }
-  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none' }
+  function setActiveFreq() { btnFreq.classList.add('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); panelFreq.style.display=''; panelRel.style.display='none'; panelCaixa.style.display='none' }
+  function setActiveRel() { btnRel.classList.add('active'); btnFreq.classList.remove('active'); btnCaixa.classList.remove('active'); panelRel.style.display=''; panelFreq.style.display='none'; panelCaixa.style.display='none'; refreshReports() }
+  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none' }
   btnFreq.onclick = setActiveFreq
+  btnRel.onclick = setActiveRel
   btnCaixa.onclick = setActiveCaixa
 }
 
@@ -3419,6 +3842,7 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
+            if (panelRel.style.display !== 'none') refreshReports()
           } catch (e) {
             showStatus(String(e?.message || e), 'error')
             if (wasPresent) {
@@ -3432,6 +3856,7 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
+            if (panelRel.style.display !== 'none') refreshReports()
           }
         }
         tr.appendChild(td)
@@ -3449,10 +3874,14 @@ function renderCirculoOracaoScreen(schema, table) {
     tableEl.appendChild(tbody)
     applyStickyOffsets()
     focusNearestDay()
+    refreshReports()
     showStatus('Pronto.', 'success')
   }
 
-  window.addEventListener('resize', applyStickyOffsets)
+  window.addEventListener('resize', () => {
+    applyStickyOffsets()
+    applyHeaderOffsetForTable(tableRel)
+  })
   load().catch(e => showStatus(String(e?.message || e), 'error'))
 }
 
