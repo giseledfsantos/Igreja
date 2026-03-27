@@ -2692,6 +2692,7 @@ function renderEbdScreen(schema, table) {
       let j = i
       while (j < sundays.length && sundays[j].month === month) j += 1
       const th = document.createElement('th')
+      th.className = 'ebd-month-group'
       th.textContent = MONTHS[month]
       th.colSpan = j - i
       rowMonth.appendChild(th)
@@ -2775,6 +2776,7 @@ function renderEbdScreen(schema, table) {
       let j = i
       while (j < sundays.length && sundays[j].month === month) j += 1
       const th = document.createElement('th')
+      th.className = 'ebd-month-group'
       th.textContent = MONTHS[month]
       th.colSpan = j - i
       rowMonth.appendChild(th)
@@ -3670,6 +3672,7 @@ function renderCirculoOracaoScreen(schema, table) {
       let j = i
       while (j < mondays.length && mondays[j].month === month) j += 1
       const th = document.createElement('th')
+      th.className = 'ebd-month-group'
       th.textContent = MONTHS[month]
       th.colSpan = j - i
       rowMonth.appendChild(th)

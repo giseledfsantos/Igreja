@@ -513,6 +513,7 @@ button.danger { background: var(--danger); color: white; }
   .caixa-desc { min-width: 180px; }
   .caixa-actions .icon-btn { width: 28px; height: 28px; }
   .caixa-actions .icon-btn svg { width: 14px; height: 14px; }
+  .ebd-table thead tr:nth-child(1) th.ebd-month-group { display: none; }
   .ebd-one-day .ebd-day,
   .ebd-one-day .ebd-cell {
     width: 44px;
