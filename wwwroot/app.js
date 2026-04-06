@@ -2615,8 +2615,8 @@ function renderEbdScreen(schema, table) {
   const relByTurmaDay = new Map()
   const relSaveTimers = new Map()
 
-  const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'id_aluno', 'aluno_id', 'idAluno', 'membro']
-  const TURMA_KEYS = ['id_turma', 'turma_id', 'turmas_id', 'idTurma', 'ebd_turma_id', 'id_ebd_turma', 'ebdTurmaId', 'turma']
+  const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'id_aluno', 'aluno_id', 'idAluno', 'aluno', 'membro']
+  const TURMA_KEYS = ['id_turma', 'turma_id', 'turmas_id', 'idTurma', 'ebd_turma_id', 'id_ebd_turma', 'ebdTurmaId', 'turma', 'id_ebd_turmas', 'ebd_turmas_id']
   const DATA_KEYS = ['data', 'dia', 'data_aula', 'data_domingo', 'data_presenca', 'dataDomingo', 'dataPresenca']
 
   function firstExistingKey(obj, keys) {

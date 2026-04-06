@@ -8,16 +8,16 @@
     "net10.0": []
   },
   "packageFolders": {
-    "C:\\Users\\zeleg\\.nuget\\packages\\": {}
+    "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\.nuget\\packages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Dev\\Igreja\\Igreja.csproj",
+      "projectUniqueName": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
       "projectName": "Igreja",
-      "projectPath": "D:\\Dev\\Igreja\\Igreja.csproj",
-      "packagesPath": "C:\\Users\\zeleg\\.nuget\\packages\\",
-      "outputPath": "D:\\Dev\\Igreja\\obj\\",
+      "projectPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
+      "packagesPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\.nuget\\packages",
+      "outputPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\zeleg\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -44,7 +44,7 @@
         "auditLevel": "low",
         "auditMode": "all"
       },
-      "SdkAnalysisLevel": "10.0.100"
+      "SdkAnalysisLevel": "10.0.200"
     },
     "frameworks": {
       "net10.0": {
@@ -68,7 +68,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.AspNetCore": "(,10.0.32767]",
           "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",

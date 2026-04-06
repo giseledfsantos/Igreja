@@ -440,12 +440,14 @@ button.danger { background: var(--danger); color: white; }
 }
 
 .ebd-wrap {
+  position: relative;
   overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid #334155;
   border-radius: 12px;
   background: #0b1220;
+  isolation: isolate;
 }
 .ebd-wrap.ebd-one-day {
   scrollbar-width: none;
@@ -568,6 +570,8 @@ button.danger { background: var(--danger); color: white; }
   text-align: left;
   background: #0b1220;
   background-clip: padding-box;
+  will-change: transform;
+  transform: translateZ(0);
 }
 .ebd-sticky-1 {
   min-width: 240px;
