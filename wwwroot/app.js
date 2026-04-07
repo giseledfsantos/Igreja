@@ -852,6 +852,8 @@ function renderMembersScreen(schema, table) {
   filtersWrap.className = 'filters'
   const listWrap = document.createElement('div')
   listWrap.className = 'list-items'
+  let lastConsultaScrollY = 0
+  let shouldRestoreConsultaScroll = false
   let filtroNomeInput = null
   let filtroDataNascInput = null
   let filtroGruposField = null
@@ -861,6 +863,26 @@ function renderMembersScreen(schema, table) {
   let membrosGrupoIndexError = null
   let membrosCargosInternosIndex = null
   let membrosCargosInternosIndexError = null
+
+  function getScrollY() {
+    try {
+      return Number(window?.scrollY || document?.documentElement?.scrollTop || document?.body?.scrollTop || 0) || 0
+    } catch {
+      return 0
+    }
+  }
+  function restoreScrollY(y) {
+    const yy = Number(y || 0) || 0
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try { window.scrollTo(0, yy) } catch {}
+      })
+    })
+  }
+  function saveConsultaScrollPosition() {
+    lastConsultaScrollY = getScrollY()
+    shouldRestoreConsultaScroll = true
+  }
 
   function normText(s) {
     const v = String(s ?? '').toLowerCase().trim()
@@ -982,6 +1004,7 @@ function renderMembersScreen(schema, table) {
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
         title.style.cursor = 'pointer'
         title.onclick = async () => {
+          saveConsultaScrollPosition()
           await fillCadastro(item)
           setActiveCadastro({ keep: true })
         }
@@ -989,6 +1012,7 @@ function renderMembersScreen(schema, table) {
         const btnDelete = document.createElement('button'); btnDelete.type = 'button'; btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
         btnDelete.onclick = async (ev) => {
           try { ev?.stopPropagation?.() } catch {}
+          const prevScrollY = getScrollY()
           try {
             const id = String(item?.[table.pk] ?? '').trim()
             const nome = String(item?.nome ?? '').trim()
@@ -1012,7 +1036,8 @@ function renderMembersScreen(schema, table) {
 
             await apiDelete(table.name, table.pk, id)
             showStatus(`Excluído: ${nome || id}`, 'success')
-            refreshList()
+            await refreshList()
+            restoreScrollY(prevScrollY)
           } catch (e) {
             showStatus(String(e.message || e), 'error')
           }
@@ -1655,7 +1680,12 @@ function renderMembersScreen(schema, table) {
   function setActiveConsulta() {
     btnConsulta.classList.add('active'); btnCadastro.classList.remove('active')
     panelConsulta.style.display = ''; panelCadastro.style.display = 'none'
-    refreshList()
+    const restoreY = shouldRestoreConsultaScroll ? lastConsultaScrollY : null
+    shouldRestoreConsultaScroll = false
+    const p = refreshList()
+    if (restoreY !== null) {
+      Promise.resolve(p).then(() => restoreScrollY(restoreY)).catch(() => {})
+    }
   }
   function clearCadastro() {
     idInput.value = ''
@@ -1680,7 +1710,7 @@ function renderMembersScreen(schema, table) {
     }
   }
   btnConsulta.onclick = setActiveConsulta
-  btnCadastro.onclick = () => setActiveCadastro()
+  btnCadastro.onclick = () => { saveConsultaScrollPosition(); setActiveCadastro() }
   setActiveConsulta()
 }
 
