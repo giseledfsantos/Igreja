@@ -2,9 +2,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 // builder.WebHost.UseUrls("http://localhost:5090");
+builder.Services.AddHostedService<Igreja.PushBirthdayWorker>();
 var app = builder.Build();
 
 app.UseDefaultFiles();
@@ -14,6 +17,8 @@ app.UseStaticFiles(new StaticFileOptions
     {
         var path = ctx.Context.Request.Path.Value ?? "";
         if (path.EndsWith("/app.js", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("/sw.js", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("/manifest.json", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith("/schema.json", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith("/styles.css", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith("/", StringComparison.OrdinalIgnoreCase))
@@ -29,6 +34,9 @@ app.MapGet("/health", () => "OK");
 
 string SUPABASE_URL = Environment.GetEnvironmentVariable("SUPABASE_URL") ?? "https://xytuuccwylwbefgkqxlr.supabase.co";
 string SUPABASE_KEY = Environment.GetEnvironmentVariable("SUPABASE_KEY") ?? "";
+string VAPID_PUBLIC_KEY = Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY") ?? "";
+string VAPID_PRIVATE_KEY = Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY") ?? "";
+string VAPID_SUBJECT = Environment.GetEnvironmentVariable("VAPID_SUBJECT") ?? "mailto:admin@ieadm-itapeva";
 
 void CopyHeaders(HttpRequest req, HttpRequestMessage msg)
 {
@@ -213,6 +221,136 @@ app.MapDelete("/db/rest/{table}", async (string table, HttpRequest req, HttpResp
     resp.StatusCode = (int)res.StatusCode;
     resp.ContentType = "application/json";
     await resp.WriteAsync(content);
+});
+
+app.MapGet("/api/push/vapid-public-key", () =>
+{
+    if (string.IsNullOrWhiteSpace(VAPID_PUBLIC_KEY))
+        return Results.Problem("VAPID_PUBLIC_KEY não configurada.");
+    return Results.Json(new { publicKey = VAPID_PUBLIC_KEY });
+});
+
+app.MapGet("/api/push/has-subscription", async (HttpRequest req) =>
+{
+    var idUsuario = req.Query.ContainsKey("id_usuario") ? req.Query["id_usuario"].ToString() : "";
+    idUsuario = string.IsNullOrWhiteSpace(idUsuario) && req.Query.ContainsKey("idUsuario") ? req.Query["idUsuario"].ToString() : idUsuario;
+    if (string.IsNullOrWhiteSpace(idUsuario)) return Results.BadRequest(new { message = "id_usuario obrigatório." });
+    if (!long.TryParse(idUsuario, out var idUsuarioNum)) return Results.BadRequest(new { message = "id_usuario inválido." });
+    if (string.IsNullOrWhiteSpace(SUPABASE_KEY)) return Results.Problem("SUPABASE_KEY não configurada.");
+
+    var url = $"{SUPABASE_URL}/rest/v1/push_subscriptions?select=id&id_usuario=eq.{idUsuarioNum}&revoked_at=is.null&limit=1";
+    using var client = new HttpClient();
+    var msg = new HttpRequestMessage(HttpMethod.Get, url);
+    msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
+    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    if (!res.IsSuccessStatusCode) return Results.StatusCode((int)res.StatusCode);
+    bool has = false;
+    try
+    {
+        using var doc = JsonDocument.Parse(content);
+        has = doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0;
+    }
+    catch { }
+    return Results.Json(new { hasSubscription = has });
+});
+
+app.MapPost("/api/push/subscribe", async (HttpRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(SUPABASE_KEY)) return Results.Problem("SUPABASE_KEY não configurada.");
+    if (string.IsNullOrWhiteSpace(VAPID_PUBLIC_KEY) || string.IsNullOrWhiteSpace(VAPID_PRIVATE_KEY)) return Results.Problem("VAPID não configurado.");
+
+    using var doc = await JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+    string idUsuario = "";
+    if (root.TryGetProperty("idUsuario", out var idU) && idU.ValueKind == JsonValueKind.String) idUsuario = idU.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(idUsuario) && root.TryGetProperty("id_usuario", out var idU2) && idU2.ValueKind == JsonValueKind.String) idUsuario = idU2.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(idUsuario) && root.TryGetProperty("id_usuario", out var idU3) && idU3.ValueKind == JsonValueKind.Number) idUsuario = idU3.GetInt64().ToString();
+    if (string.IsNullOrWhiteSpace(idUsuario) && root.TryGetProperty("idUsuario", out var idU4) && idU4.ValueKind == JsonValueKind.Number) idUsuario = idU4.GetInt64().ToString();
+    if (string.IsNullOrWhiteSpace(idUsuario)) return Results.BadRequest(new { message = "idUsuario obrigatório." });
+    if (!long.TryParse(idUsuario, out var idUsuarioNum)) return Results.BadRequest(new { message = "idUsuario inválido." });
+
+    JsonElement subEl;
+    if (root.TryGetProperty("subscription", out var subProp)) subEl = subProp;
+    else subEl = root;
+
+    if (!subEl.TryGetProperty("endpoint", out var epEl)) return Results.BadRequest(new { message = "subscription.endpoint obrigatório." });
+    var endpoint = epEl.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(endpoint)) return Results.BadRequest(new { message = "subscription.endpoint obrigatório." });
+
+    string p256dh = "";
+    string auth = "";
+    if (subEl.TryGetProperty("keys", out var keysEl) && keysEl.ValueKind == JsonValueKind.Object)
+    {
+        if (keysEl.TryGetProperty("p256dh", out var pEl)) p256dh = pEl.GetString() ?? "";
+        if (keysEl.TryGetProperty("auth", out var aEl)) auth = aEl.GetString() ?? "";
+    }
+    if (string.IsNullOrWhiteSpace(p256dh) || string.IsNullOrWhiteSpace(auth)) return Results.BadRequest(new { message = "subscription.keys inválido." });
+
+    string userAgent = "";
+    if (root.TryGetProperty("userAgent", out var uaEl) && uaEl.ValueKind == JsonValueKind.String) userAgent = uaEl.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(userAgent)) userAgent = req.Headers.UserAgent.ToString();
+
+    var nowIso = DateTimeOffset.UtcNow.ToString("O");
+    var payload = new
+    {
+        id_usuario = idUsuarioNum,
+        endpoint,
+        p256dh,
+        auth,
+        user_agent = userAgent,
+        last_seen_at = nowIso,
+        revoked_at = (string?)null,
+        updated_at = nowIso
+    };
+
+    var url = $"{SUPABASE_URL}/rest/v1/push_subscriptions?on_conflict=id_usuario,endpoint";
+    using var client = new HttpClient();
+    var msg = new HttpRequestMessage(HttpMethod.Post, url);
+    msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
+    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    msg.Headers.TryAddWithoutValidation("Prefer", "resolution=merge-duplicates,return=representation");
+    msg.Content = new StringContent(JsonSerializer.Serialize(new[] { payload }), Encoding.UTF8, "application/json");
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    if (!res.IsSuccessStatusCode) return Results.Text(content, "application/json", Encoding.UTF8, (int)res.StatusCode);
+    return Results.Text(content, "application/json");
+});
+
+app.MapPost("/api/push/unsubscribe", async (HttpRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(SUPABASE_KEY)) return Results.Problem("SUPABASE_KEY não configurada.");
+
+    using var doc = await JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+    string idUsuario = "";
+    if (root.TryGetProperty("idUsuario", out var idU) && idU.ValueKind == JsonValueKind.String) idUsuario = idU.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(idUsuario) && root.TryGetProperty("id_usuario", out var idU2) && idU2.ValueKind == JsonValueKind.String) idUsuario = idU2.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(idUsuario) && root.TryGetProperty("id_usuario", out var idU3) && idU3.ValueKind == JsonValueKind.Number) idUsuario = idU3.GetInt64().ToString();
+    if (string.IsNullOrWhiteSpace(idUsuario) && root.TryGetProperty("idUsuario", out var idU4) && idU4.ValueKind == JsonValueKind.Number) idUsuario = idU4.GetInt64().ToString();
+    if (string.IsNullOrWhiteSpace(idUsuario)) return Results.BadRequest(new { message = "idUsuario obrigatório." });
+    if (!long.TryParse(idUsuario, out var idUsuarioNum)) return Results.BadRequest(new { message = "idUsuario inválido." });
+
+    var endpoint = "";
+    if (root.TryGetProperty("endpoint", out var epEl) && epEl.ValueKind == JsonValueKind.String) endpoint = epEl.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(endpoint)) return Results.BadRequest(new { message = "endpoint obrigatório." });
+
+    var nowIso = DateTimeOffset.UtcNow.ToString("O");
+    var url = $"{SUPABASE_URL}/rest/v1/push_subscriptions?id_usuario=eq.{idUsuarioNum}&endpoint=eq.{Uri.EscapeDataString(endpoint)}";
+    using var client = new HttpClient();
+    var msg = new HttpRequestMessage(HttpMethod.Patch, url);
+    msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
+    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    msg.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+    msg.Content = new StringContent(JsonSerializer.Serialize(new { revoked_at = nowIso, updated_at = nowIso }), Encoding.UTF8, "application/json");
+    var res = await client.SendAsync(msg);
+    var content = await res.Content.ReadAsStringAsync();
+    if (!res.IsSuccessStatusCode) return Results.Text(content, "application/json", Encoding.UTF8, (int)res.StatusCode);
+    return Results.Text(content, "application/json");
 });
 
 app.Run();

@@ -18,7 +18,9 @@ New-Item -ItemType Directory -Force -Path $nugetPluginsCache | Out-Null
 [Environment]::SetEnvironmentVariable("NUGET_PLUGINS_CACHE_PATH", $nugetPluginsCache, 'Process')
 [Environment]::SetEnvironmentVariable("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1", 'Process')
 [Environment]::SetEnvironmentVariable("DOTNET_NOLOGO", "1", 'Process')
-[Environment]::SetEnvironmentVariable("ASPNETCORE_URLS", "http://localhost:5090", 'Process')
+$port = $env:PORT
+if (-not $port) { $port = "8080" }
+[Environment]::SetEnvironmentVariable("ASPNETCORE_URLS", "http://localhost:$port", 'Process')
 
 $envFile = Join-Path $PSScriptRoot "..\.env.local"
 if (Test-Path $envFile) {

@@ -1,0 +1,17 @@
+{
+  "name": "IEADM-ITAPEVA",
+  "short_name": "IEADM",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b2a5b",
+  "icons": [
+    {
+      "src": "/tela-inicial.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

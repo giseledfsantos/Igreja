@@ -6,4 +6,9 @@
     <AssemblyName>Igreja</AssemblyName>
     <RootNamespace>Igreja</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WebPush" Version="1.0.12" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
 </Project>

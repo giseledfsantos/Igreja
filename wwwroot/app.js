@@ -378,6 +378,94 @@ function bytesFromB64(b64) {
   return out
 }
 
+function urlB64ToUint8Array(b64Url) {
+  const s = String(b64Url || '').trim()
+  if (!s) return new Uint8Array()
+  const pad = '='.repeat((4 - (s.length % 4)) % 4)
+  const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/')
+  return bytesFromB64(b64)
+}
+
+function isTruthyDb(v) {
+  if (v === true) return true
+  if (v === false) return false
+  if (v === 1 || v === '1') return true
+  if (v === 0 || v === '0') return false
+  const s = String(v ?? '').trim().toLowerCase()
+  if (s === 'true' || s === 't' || s === 'yes' || s === 'sim') return true
+  if (s === 'false' || s === 'f' || s === 'no' || s === 'nao' || s === 'não') return false
+  return !!v
+}
+
+async function pushHasSubscriptionForUser(userId) {
+  const id = String(userId ?? '').trim()
+  if (!id) return false
+  const res = await fetch(`/api/push/has-subscription?id_usuario=${encodeURIComponent(id)}`, { method: 'GET' })
+  if (!res.ok) return false
+  const data = await res.json().catch(() => ({}))
+  return !!data?.hasSubscription
+}
+
+async function pushEnableForUser(userId) {
+  const id = String(userId ?? '').trim()
+  if (!id) throw new Error('Usuário inválido.')
+  if (!('serviceWorker' in navigator)) throw new Error('Service Worker não suportado neste navegador.')
+  if (!('PushManager' in window)) throw new Error('Push não suportado neste navegador.')
+
+  let perm = 'default'
+  try { perm = Notification.permission } catch {}
+  if (perm !== 'granted') {
+    perm = await Notification.requestPermission()
+  }
+  if (perm !== 'granted') throw new Error('Permissão de notificações negada.')
+
+  const vapidRes = await fetch('/api/push/vapid-public-key', { method: 'GET' })
+  if (!vapidRes.ok) throw new Error('Não foi possível obter a chave do push.')
+  const vapidData = await vapidRes.json().catch(() => ({}))
+  const publicKey = String(vapidData?.publicKey || '').trim()
+  if (!publicKey) throw new Error('Chave do push inválida.')
+  const appServerKey = urlB64ToUint8Array(publicKey)
+
+  const reg = await navigator.serviceWorker.ready
+  let sub = await reg.pushManager.getSubscription()
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey })
+  }
+
+  const payload = { idUsuario: id, subscription: sub, userAgent: navigator.userAgent }
+  const saveRes = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!saveRes.ok) {
+    let text = ''
+    try { text = await saveRes.text() } catch {}
+    throw new Error(text || 'Não foi possível salvar a inscrição do push.')
+  }
+  return true
+}
+
+async function maybePromptEnablePushAfterLogin(userRow, userId, showStatus) {
+  const receives = isTruthyDb(firstExistingValue(userRow, ['recebe_notificacoes', 'recebeNotificacoes', 'receber_notificacoes', 'notificacoes']))
+  if (!receives) return
+  const has = await pushHasSubscriptionForUser(userId)
+  if (has) return
+  const ok = await confirmModal({
+    title: 'Ativar Notificações',
+    message: 'Deseja ativar as notificações deste dispositivo?',
+    confirmText: 'Ativar',
+    cancelText: 'Agora não'
+  })
+  if (!ok) return
+  try {
+    await pushEnableForUser(userId)
+    if (typeof showStatus === 'function') showStatus('Notificações ativadas.', 'success')
+  } catch (e) {
+    if (typeof showStatus === 'function') showStatus(String(e?.message || e || 'Falha ao ativar notificações.'), 'error')
+  }
+}
+
 async function hashPasswordPbkdf2(password, { iterations = 120000, saltB64 = '' } = {}) {
   const salt = saltB64 ? bytesFromB64(saltB64) : crypto.getRandomValues(new Uint8Array(16))
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(password ?? '')), { name: 'PBKDF2' }, false, ['deriveBits'])
@@ -1888,6 +1976,7 @@ function renderLoginScreen(schema, table) {
     authState.allowedNorm = allowedNorm
     saveAuth()
     await refreshAfterAuth()
+    await maybePromptEnablePushAfterLogin(row, userId, showStatus)
     showStatus('Logado.', 'success')
   }
 
@@ -2204,6 +2293,17 @@ function renderUsuariosScreen(schema, table) {
   fUsuario.appendChild(iUsuario)
   cardCad.appendChild(fUsuario)
 
+  const fRecebeNotificacoes = document.createElement('div')
+  fRecebeNotificacoes.className = 'field'
+  const lRecebeNotificacoes = document.createElement('label')
+  lRecebeNotificacoes.textContent = 'Receber Notificações'
+  const iRecebeNotificacoes = document.createElement('input')
+  iRecebeNotificacoes.type = 'checkbox'
+  iRecebeNotificacoes.dataset.key = 'recebe_notificacoes'
+  fRecebeNotificacoes.appendChild(lRecebeNotificacoes)
+  fRecebeNotificacoes.appendChild(iRecebeNotificacoes)
+  cardCad.appendChild(fRecebeNotificacoes)
+
   const modsField = createChecklistField('Módulos')
   cardCad.appendChild(modsField.wrap)
 
@@ -2234,6 +2334,7 @@ function renderUsuariosScreen(schema, table) {
     const disabled = !cadastroEditMode && hasId
     sMembro.disabled = disabled
     iUsuario.disabled = disabled
+    iRecebeNotificacoes.disabled = disabled
     modsField.wrap.querySelectorAll('button,input,select,textarea').forEach(el => {
       el.disabled = disabled
     })
@@ -2262,6 +2363,7 @@ function renderUsuariosScreen(schema, table) {
       idInput.value = ''
       sMembro.value = ''
       iUsuario.value = ''
+      iRecebeNotificacoes.checked = false
       modsField.state.selected = new Set()
       modsField.setOptions(modulosCache.map(m => ({ value: String(m?.[modulosIdKey] ?? ''), label: String(m?.[modulosLabelKey] ?? m?.[modulosIdKey] ?? '') })).filter(x => x.value))
       setCadastroMode(true)
@@ -2313,6 +2415,8 @@ function renderUsuariosScreen(schema, table) {
       const lk = firstExistingKey(userRow, LOGIN_KEYS)
       if (lk) usuariosLoginKey = lk
       iUsuario.value = String(userRow?.[usuariosLoginKey] ?? '').trim().toUpperCase()
+      const rn = userRow?.recebe_notificacoes
+      iRecebeNotificacoes.checked = rn === true || rn === 1 || rn === '1' || String(rn ?? '').trim().toLowerCase() === 'true'
       const pk = firstExistingKey(userRow, PASS_KEYS)
       if (pk) usuariosPassKey = pk
       const mid = String(sMembro.value ?? '').trim()
@@ -2444,6 +2548,7 @@ function renderUsuariosScreen(schema, table) {
     const id = String(idInput.value ?? '').trim()
     const membroId = String(sMembro.value ?? '').trim()
     const login = String(iUsuario.value ?? '').trim().toUpperCase()
+    const recebeNotificacoes = !!iRecebeNotificacoes.checked
     if (!membroId) { showStatus('Selecione o membro.', 'error'); return }
     if (!login) { showStatus('Informe o usuário.', 'error'); return }
 
@@ -2459,7 +2564,7 @@ function renderUsuariosScreen(schema, table) {
       if (!id) {
         membroKeys.forEach(mk => {
           loginKeys.forEach(lk => {
-            passKeys.forEach(pk => userPayloads.push({ [mk]: membroVal, [lk]: login, [pk]: null }))
+            passKeys.forEach(pk => userPayloads.push({ [mk]: membroVal, [lk]: login, [pk]: null, recebe_notificacoes: recebeNotificacoes }))
           })
         })
         const created = await tryCreateOne(USERS_TABLE, userPayloads)
@@ -2467,7 +2572,7 @@ function renderUsuariosScreen(schema, table) {
         if (!userId) throw new Error('Não foi possível identificar o usuário criado.')
       } else {
         const payloads = []
-        membroKeys.forEach(mk => loginKeys.forEach(lk => payloads.push({ [mk]: membroVal, [lk]: login })))
+        membroKeys.forEach(mk => loginKeys.forEach(lk => payloads.push({ [mk]: membroVal, [lk]: login, recebe_notificacoes: recebeNotificacoes })))
         let updated = false
         for (const p of payloads) {
           try {
@@ -3989,6 +4094,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.title = 'IEADM-ITAPEVA'
     document.documentElement.dataset.build = APP_BUILD
     console.log('APP_BUILD', APP_BUILD)
+  } catch {}
+  try {
+    if ('serviceWorker' in navigator) {
+      await navigator.serviceWorker.register('/sw.js')
+    }
   } catch {}
   if (LOGIN_ENABLED) loadAuth()
   else clearAuth()

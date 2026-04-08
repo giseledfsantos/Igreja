@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj": {}
+    "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj": {}
   },
   "projects": {
-    "c:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj": {
+    "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
+        "projectUniqueName": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
         "projectName": "Igreja",
-        "projectPath": "c:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
-        "packagesPath": "c:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\.nuget\\packages",
-        "outputPath": "c:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\obj\\",
+        "projectPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
+        "packagesPath": "C:\\Users\\zeleg\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\zeleg\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -43,6 +43,16 @@
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
+          "dependencies": {
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "WebPush": {
+              "target": "Package",
+              "version": "[1.0.12, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
