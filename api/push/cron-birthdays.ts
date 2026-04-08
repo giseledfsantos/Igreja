@@ -1,9 +1,21 @@
 import webpush from 'web-push'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
-const SUPABASE_KEY = process.env.SUPABASE_KEY ?? ''
-const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY ?? '').trim()
-const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY ?? '').trim()
+const SUPABASE_KEY = process.env.SUPABASE_KEY ?? (process.env as any).SUPABASE_SERVICE_ROLE_KEY ?? (process.env as any).SUPABASE_SERVICE_ROLE ?? ''
+const VAPID_PUBLIC_KEY = String(
+  process.env.VAPID_PUBLIC_KEY ??
+    process.env.PUBLIC_VAPID_KEY ??
+    process.env.PUBLIC_KEY ??
+    (process.env as any).public_key ??
+    ''
+).trim()
+const VAPID_PRIVATE_KEY = String(
+  process.env.VAPID_PRIVATE_KEY ??
+    process.env.PRIVATE_VAPID_KEY ??
+    process.env.PRIVATE_KEY ??
+    (process.env as any).private_key ??
+    ''
+).trim()
 const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT ?? 'mailto:admin@localhost').trim()
 
 function ensureEnv() {

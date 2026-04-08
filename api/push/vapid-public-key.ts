@@ -9,7 +9,13 @@ export default async function handler(req: any, res: any) {
       return
     }
 
-    const publicKey = String(process.env.VAPID_PUBLIC_KEY ?? '').trim()
+    const publicKey = String(
+      process.env.VAPID_PUBLIC_KEY ??
+        process.env.PUBLIC_VAPID_KEY ??
+        process.env.PUBLIC_KEY ??
+        (process.env as any).public_key ??
+        ''
+    ).trim()
     if (!publicKey) {
       res.status(500).json({ error: 'VAPID_PUBLIC_KEY ausente no ambiente' })
       return
