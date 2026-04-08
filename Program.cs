@@ -276,7 +276,7 @@ app.MapGet("/api/push/has-subscription", async (HttpRequest req) =>
     msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     var res = await client.SendAsync(msg);
     var content = await res.Content.ReadAsStringAsync();
-    if (!res.IsSuccessStatusCode) return Results.StatusCode((int)res.StatusCode);
+    if (!res.IsSuccessStatusCode) return Results.Text(content, "application/json", Encoding.UTF8, (int)res.StatusCode);
     bool has = false;
     try
     {

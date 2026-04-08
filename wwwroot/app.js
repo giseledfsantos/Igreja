@@ -2000,6 +2000,23 @@ function renderLoginScreen(schema, table) {
     info.appendChild(v)
     const actions = document.createElement('div')
     actions.className = 'actions'
+    const btnEnablePush = document.createElement('button')
+    btnEnablePush.type = 'button'
+    btnEnablePush.className = 'btn-secondary'
+    btnEnablePush.textContent = 'Ativar Notificações'
+    btnEnablePush.style.display = 'none'
+    btnEnablePush.onclick = async () => {
+      btnEnablePush.disabled = true
+      try {
+        await pushEnableForUser(authState.userId)
+        showStatus('Notificações ativadas.', 'success')
+        btnEnablePush.style.display = 'none'
+      } catch (e) {
+        showStatus(String(e?.message || e || 'Falha ao ativar notificações.'), 'error')
+      } finally {
+        btnEnablePush.disabled = false
+      }
+    }
     const btnLogout = document.createElement('button')
     btnLogout.type = 'button'
     btnLogout.className = 'danger'
@@ -2009,10 +2026,37 @@ function renderLoginScreen(schema, table) {
       renderTabs(schemaCache)
       activateTab('login')
     }
+    actions.appendChild(btnEnablePush)
     actions.appendChild(btnLogout)
     card.appendChild(info)
     card.appendChild(actions)
     screens.appendChild(card)
+
+    ;(async () => {
+      try {
+        const id = String(authState.userId || '').trim()
+        if (!id) return
+        let row = null
+        const keys = ['id', 'usuario_id', 'usuarios_id']
+        for (const k of keys) {
+          try {
+            const rows = await apiGet('usuarios', { select: '*', [k]: `eq.${id}` })
+            if (Array.isArray(rows) && rows.length) { row = rows[0]; break }
+          } catch (e) {
+            const msg = String(e?.message || e || '')
+            if (msg.includes('Could not find') || msg.includes('column') || msg.includes('unknown')) continue
+            throw e
+          }
+        }
+        if (!row) return
+        const receives = isTruthyDb(firstExistingValue(row, ['recebe_notificacoes', 'recebeNotificacoes', 'receber_notificacoes', 'notificacoes']))
+        if (!receives) return
+        const has = await pushHasSubscriptionForUser(id)
+        if (has) return
+        btnEnablePush.style.display = ''
+      } catch {}
+    })()
+
     return
   }
 
