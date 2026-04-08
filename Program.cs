@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using WebPush;
 
 var builder = WebApplication.CreateBuilder(args);
 // builder.WebHost.UseUrls("http://localhost:5090");
@@ -37,6 +38,34 @@ string SUPABASE_KEY = Environment.GetEnvironmentVariable("SUPABASE_KEY") ?? "";
 string VAPID_PUBLIC_KEY = Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY") ?? "";
 string VAPID_PRIVATE_KEY = Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY") ?? "";
 string VAPID_SUBJECT = Environment.GetEnvironmentVariable("VAPID_SUBJECT") ?? "mailto:admin@ieadm-itapeva";
+
+if (string.IsNullOrWhiteSpace(VAPID_PUBLIC_KEY) || string.IsNullOrWhiteSpace(VAPID_PRIVATE_KEY))
+{
+    try
+    {
+        var keys = VapidHelper.GenerateVapidKeys();
+        VAPID_PUBLIC_KEY = keys.PublicKey;
+        VAPID_PRIVATE_KEY = keys.PrivateKey;
+        Environment.SetEnvironmentVariable("VAPID_PUBLIC_KEY", VAPID_PUBLIC_KEY, EnvironmentVariableTarget.Process);
+        Environment.SetEnvironmentVariable("VAPID_PRIVATE_KEY", VAPID_PRIVATE_KEY, EnvironmentVariableTarget.Process);
+    }
+    catch { }
+}
+
+string ResolveApiKey(HttpRequest req)
+{
+    if (!string.IsNullOrWhiteSpace(SUPABASE_KEY)) return SUPABASE_KEY;
+    if (req.Headers.TryGetValue("apikey", out var apikey) && !string.IsNullOrWhiteSpace(apikey.ToString()))
+        return apikey.ToString();
+    if (req.Headers.TryGetValue("Authorization", out var auth))
+    {
+        var s = auth.ToString();
+        if (s.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            s = s.Substring(7).Trim();
+        if (!string.IsNullOrWhiteSpace(s)) return s;
+    }
+    return "";
+}
 
 void CopyHeaders(HttpRequest req, HttpRequestMessage msg)
 {
@@ -236,13 +265,14 @@ app.MapGet("/api/push/has-subscription", async (HttpRequest req) =>
     idUsuario = string.IsNullOrWhiteSpace(idUsuario) && req.Query.ContainsKey("idUsuario") ? req.Query["idUsuario"].ToString() : idUsuario;
     if (string.IsNullOrWhiteSpace(idUsuario)) return Results.BadRequest(new { message = "id_usuario obrigatório." });
     if (!long.TryParse(idUsuario, out var idUsuarioNum)) return Results.BadRequest(new { message = "id_usuario inválido." });
-    if (string.IsNullOrWhiteSpace(SUPABASE_KEY)) return Results.Problem("SUPABASE_KEY não configurada.");
+    var apiKey = ResolveApiKey(req);
+    if (string.IsNullOrWhiteSpace(apiKey)) return Results.Problem("SUPABASE_KEY não configurada.");
 
     var url = $"{SUPABASE_URL}/rest/v1/push_subscriptions?select=id&id_usuario=eq.{idUsuarioNum}&revoked_at=is.null&limit=1";
     using var client = new HttpClient();
     var msg = new HttpRequestMessage(HttpMethod.Get, url);
-    msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
-    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    msg.Headers.TryAddWithoutValidation("apikey", apiKey);
+    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
     msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     var res = await client.SendAsync(msg);
     var content = await res.Content.ReadAsStringAsync();
@@ -259,7 +289,8 @@ app.MapGet("/api/push/has-subscription", async (HttpRequest req) =>
 
 app.MapPost("/api/push/subscribe", async (HttpRequest req) =>
 {
-    if (string.IsNullOrWhiteSpace(SUPABASE_KEY)) return Results.Problem("SUPABASE_KEY não configurada.");
+    var apiKey = ResolveApiKey(req);
+    if (string.IsNullOrWhiteSpace(apiKey)) return Results.Problem("SUPABASE_KEY não configurada.");
     if (string.IsNullOrWhiteSpace(VAPID_PUBLIC_KEY) || string.IsNullOrWhiteSpace(VAPID_PRIVATE_KEY)) return Results.Problem("VAPID não configurado.");
 
     using var doc = await JsonDocument.ParseAsync(req.Body);
@@ -309,8 +340,8 @@ app.MapPost("/api/push/subscribe", async (HttpRequest req) =>
     var url = $"{SUPABASE_URL}/rest/v1/push_subscriptions?on_conflict=id_usuario,endpoint";
     using var client = new HttpClient();
     var msg = new HttpRequestMessage(HttpMethod.Post, url);
-    msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
-    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    msg.Headers.TryAddWithoutValidation("apikey", apiKey);
+    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
     msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     msg.Headers.TryAddWithoutValidation("Prefer", "resolution=merge-duplicates,return=representation");
     msg.Content = new StringContent(JsonSerializer.Serialize(new[] { payload }), Encoding.UTF8, "application/json");
@@ -322,7 +353,8 @@ app.MapPost("/api/push/subscribe", async (HttpRequest req) =>
 
 app.MapPost("/api/push/unsubscribe", async (HttpRequest req) =>
 {
-    if (string.IsNullOrWhiteSpace(SUPABASE_KEY)) return Results.Problem("SUPABASE_KEY não configurada.");
+    var apiKey = ResolveApiKey(req);
+    if (string.IsNullOrWhiteSpace(apiKey)) return Results.Problem("SUPABASE_KEY não configurada.");
 
     using var doc = await JsonDocument.ParseAsync(req.Body);
     var root = doc.RootElement;
@@ -342,8 +374,8 @@ app.MapPost("/api/push/unsubscribe", async (HttpRequest req) =>
     var url = $"{SUPABASE_URL}/rest/v1/push_subscriptions?id_usuario=eq.{idUsuarioNum}&endpoint=eq.{Uri.EscapeDataString(endpoint)}";
     using var client = new HttpClient();
     var msg = new HttpRequestMessage(HttpMethod.Patch, url);
-    msg.Headers.TryAddWithoutValidation("apikey", SUPABASE_KEY);
-    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + SUPABASE_KEY);
+    msg.Headers.TryAddWithoutValidation("apikey", apiKey);
+    msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
     msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     msg.Headers.TryAddWithoutValidation("Prefer", "return=representation");
     msg.Content = new StringContent(JsonSerializer.Serialize(new { revoked_at = nowIso, updated_at = nowIso }), Encoding.UTF8, "application/json");

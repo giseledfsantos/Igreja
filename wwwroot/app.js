@@ -400,7 +400,10 @@ function isTruthyDb(v) {
 async function pushHasSubscriptionForUser(userId) {
   const id = String(userId ?? '').trim()
   if (!id) return false
-  const res = await fetch(`/api/push/has-subscription?id_usuario=${encodeURIComponent(id)}`, { method: 'GET' })
+  const res = await fetch(`/api/push/has-subscription?id_usuario=${encodeURIComponent(id)}`, {
+    method: 'GET',
+    headers: { apikey: API_KEY, Authorization: 'Bearer ' + API_KEY }
+  })
   if (!res.ok) return false
   const data = await res.json().catch(() => ({}))
   return !!data?.hasSubscription
@@ -435,7 +438,7 @@ async function pushEnableForUser(userId) {
   const payload = { idUsuario: id, subscription: sub, userAgent: navigator.userAgent }
   const saveRes = await fetch('/api/push/subscribe', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', apikey: API_KEY, Authorization: 'Bearer ' + API_KEY },
     body: JSON.stringify(payload)
   })
   if (!saveRes.ok) {
