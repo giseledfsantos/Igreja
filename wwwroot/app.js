@@ -423,7 +423,11 @@ async function pushEnableForUser(userId) {
   if (perm !== 'granted') throw new Error('Permissão de notificações negada.')
 
   const vapidRes = await fetch('/api/push/vapid-public-key', { method: 'GET' })
-  if (!vapidRes.ok) throw new Error('Não foi possível obter a chave do push.')
+  if (!vapidRes.ok) {
+    let text = ''
+    try { text = await vapidRes.text() } catch {}
+    throw new Error(text || 'Não foi possível obter a chave do push.')
+  }
   const vapidData = await vapidRes.json().catch(() => ({}))
   const publicKey = String(vapidData?.publicKey || '').trim()
   if (!publicKey) throw new Error('Chave do push inválida.')
