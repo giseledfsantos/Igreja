@@ -1,5 +1,5 @@
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
-const SUPABASE_KEY = process.env.SUPABASE_KEY ?? ''
+const SUPABASE_KEY = process.env.SUPABASE_KEY ?? (process.env as any).SUPABASE_SERVICE_ROLE_KEY ?? (process.env as any).SUPABASE_SERVICE_ROLE ?? ''
 
 function ensureEnv() {
   if (!SUPABASE_URL) throw new Error('SUPABASE_URL ausente no ambiente')

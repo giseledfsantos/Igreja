@@ -39,10 +39,25 @@ function getDatePartsInSaoPaulo(d: Date) {
   return { year, month, day }
 }
 
+function addDays({ year, month, day }: { year: number; month: number; day: number }, days: number) {
+  const dt = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0))
+  return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() + 1, day: dt.getUTCDate() }
+}
+
+function parseYyyyMmDd(s: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '').trim())
+  if (!m) return null
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
+}
+
 function monthDayFromDateValue(v: any) {
   const s = String(v ?? '').trim()
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
   if (m) return { month: Number(m[2]), day: Number(m[3]) }
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s)
+  if (br) return { month: Number(br[2]), day: Number(br[1]) }
+  const br2 = /^(\d{2})-(\d{2})-(\d{4})/.exec(s)
+  if (br2) return { month: Number(br2[2]), day: Number(br2[1]) }
   const dt = new Date(s)
   if (!Number.isFinite(dt.getTime())) return null
   return { month: dt.getUTCMonth() + 1, day: dt.getUTCDate() }
@@ -102,7 +117,15 @@ export default async function handler(req: any, res: any) {
       return
     }
 
-    if (process.env.VERCEL && String(req.headers['x-vercel-cron'] ?? '') !== '1') {
+    const urlObj = new URL(req.url || '/', `https://${req.headers.host || 'localhost'}`)
+    const debug = urlObj.searchParams.get('debug') === '1'
+    const asOfRaw = String(urlObj.searchParams.get('asOf') || '').trim()
+    const secret = String(process.env.CRON_SECRET ?? process.env.PUSH_CRON_SECRET ?? '').trim()
+    const key = String(urlObj.searchParams.get('key') || '').trim()
+
+    const isCron = String(req.headers['x-vercel-cron'] ?? '') === '1'
+    const isManualAllowed = !!secret && !!key && key === secret
+    if (process.env.VERCEL && !isCron && !isManualAllowed) {
       res.status(403).json({ error: 'Forbidden' })
       return
     }
@@ -110,8 +133,9 @@ export default async function handler(req: any, res: any) {
     webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
     const now = new Date()
-    const today = getDatePartsInSaoPaulo(now)
-    const tomorrow = getDatePartsInSaoPaulo(new Date(now.getTime() + 24 * 60 * 60 * 1000))
+    const forced = asOfRaw ? parseYyyyMmDd(asOfRaw) : null
+    const today = forced ?? getDatePartsInSaoPaulo(now)
+    const tomorrow = addDays(today, 1)
 
     const membros = await supabaseGet('/rest/v1/membros?select=id,nome,data_nascimento')
     const aniversariosHoje: any[] = []
@@ -141,6 +165,7 @@ export default async function handler(req: any, res: any) {
 
     let sent = 0
     let revoked = 0
+    let errors = 0
 
     for (const sub of activeSubs) {
       const subscription = {
@@ -169,6 +194,7 @@ export default async function handler(req: any, res: any) {
           await webpush.sendNotification(subscription as any, JSON.stringify({ title: msg.title, body: msg.body, url: '/', tag: msg.tag }))
           sent++
         } catch (e: any) {
+          errors++
           const statusCode = Number(e?.statusCode ?? e?.status ?? 0)
           if ((statusCode === 404 || statusCode === 410) && subId) {
             try {
@@ -184,9 +210,18 @@ export default async function handler(req: any, res: any) {
       ok: true,
       sent,
       revoked,
+      errors,
       today: aniversariosHoje.length,
       tomorrow: aniversariosAmanha.length,
-      subs: activeSubs.length
+      subs: activeSubs.length,
+      allowedUsers: allowedUserIds.size,
+      date: { today, tomorrow },
+      matches: debug
+        ? {
+            today: aniversariosHoje.map(m => ({ id: m?.id, nome: m?.nome })),
+            tomorrow: aniversariosAmanha.map(m => ({ id: m?.id, nome: m?.nome }))
+          }
+        : undefined
     })
   } catch (err: any) {
     const msg = err?.message ?? 'Erro interno'
