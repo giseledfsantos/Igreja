@@ -1,4 +1,5 @@
 import webpush from 'web-push'
+import { createPrivateKey } from 'crypto'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://xytuuccwylwbefgkqxlr.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_KEY ?? (process.env as any).SUPABASE_SERVICE_ROLE_KEY ?? (process.env as any).SUPABASE_SERVICE_ROLE ?? ''
@@ -23,6 +24,32 @@ function ensureEnv() {
   if (!SUPABASE_KEY) throw new Error('SUPABASE_KEY ausente no ambiente')
   if (!VAPID_PUBLIC_KEY) throw new Error('VAPID_PUBLIC_KEY ausente no ambiente')
   if (!VAPID_PRIVATE_KEY) throw new Error('VAPID_PRIVATE_KEY ausente no ambiente')
+}
+
+function normalizeVapidPrivateKey(k: string) {
+  const s = String(k || '').trim()
+  if (!s) return ''
+  if (/^[A-Za-z0-9\-_]+$/.test(s) && s.length >= 40 && s.length <= 80) return s
+
+  try {
+    let keyObj: any = null
+    if (s.includes('-----BEGIN')) {
+      keyObj = createPrivateKey({ key: s, format: 'pem' as any })
+    } else if (/^[A-Za-z0-9+/=]+$/.test(s)) {
+      const der = Buffer.from(s, 'base64')
+      try {
+        keyObj = createPrivateKey({ key: der, format: 'der' as any, type: 'sec1' as any })
+      } catch {
+        keyObj = createPrivateKey({ key: der, format: 'der' as any, type: 'pkcs8' as any })
+      }
+    }
+    if (!keyObj) return s
+    const jwk: any = keyObj.export({ format: 'jwk' as any })
+    const d = String(jwk?.d || '').trim()
+    return d || s
+  } catch {
+    return s
+  }
 }
 
 function getDatePartsInSaoPaulo(d: Date) {
@@ -130,7 +157,8 @@ export default async function handler(req: any, res: any) {
       return
     }
 
-    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+    const normalizedPrivateKey = normalizeVapidPrivateKey(VAPID_PRIVATE_KEY)
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, normalizedPrivateKey)
 
     const now = new Date()
     const forced = asOfRaw ? parseYyyyMmDd(asOfRaw) : null
