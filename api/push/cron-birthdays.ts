@@ -298,6 +298,8 @@ export default async function handler(req: any, res: any) {
     let revoked = 0
     let errors = 0
     const deliveries: Array<{ subId: string; userId: string; endpointTail: string; tag: string; ok: boolean; statusCode?: number }> = []
+    const todayKey = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`
+    const tomorrowKey = `${tomorrow.year}-${String(tomorrow.month).padStart(2, '0')}-${String(tomorrow.day).padStart(2, '0')}`
 
     for (const sub of activeSubs) {
       const subscription = {
@@ -316,11 +318,11 @@ export default async function handler(req: any, res: any) {
 
       for (const m of aniversariosAmanha) {
         const nome = String(m?.nome ?? '').trim()
-        messages.push({ title: 'IEADM-ITAPEVA', body: `Amanhã é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-tomorrow` })
+        messages.push({ title: 'IEADM-ITAPEVA', body: `Amanhã é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-tomorrow-${tomorrowKey}` })
       }
       for (const m of aniversariosHoje) {
         const nome = String(m?.nome ?? '').trim()
-        messages.push({ title: 'IEADM-ITAPEVA', body: `Hoje é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-today` })
+        messages.push({ title: 'IEADM-ITAPEVA', body: `Hoje é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-today-${todayKey}` })
       }
 
       for (const msg of messages) {
@@ -334,6 +336,8 @@ export default async function handler(req: any, res: any) {
               tag: msg.tag,
               renotify: true,
               silent: false,
+              requireInteraction: true,
+              vibrate: [200, 100, 200],
               timestamp: Date.now()
             }),
             { TTL: 60 * 60, headers: { Urgency: 'high' } } as any
