@@ -2152,67 +2152,6 @@ function renderLoginScreen(schema, table) {
         btnEnablePush.disabled = false
       }
     }
-    const btnTestNotif = document.createElement('button')
-    btnTestNotif.type = 'button'
-    btnTestNotif.className = 'btn-secondary'
-    btnTestNotif.textContent = 'Testar Notificação'
-    btnTestNotif.onclick = async () => {
-      btnTestNotif.disabled = true
-      try {
-        if (!('Notification' in window)) throw new Error('Notificações não suportadas neste navegador.')
-        if (!('serviceWorker' in navigator)) throw new Error('Service Worker não suportado neste navegador.')
-        let perm = 'default'
-        try { perm = Notification.permission } catch {}
-        if (perm !== 'granted') perm = await Notification.requestPermission()
-        if (perm !== 'granted') throw new Error('Permissão de notificações negada.')
-        const reg = await navigator.serviceWorker.ready
-        await reg.showNotification('IEADM-ITAPEVA', {
-          body: 'Notificação de teste',
-          icon: '/tela-inicial.jpg',
-          badge: '/tela-inicial.jpg',
-          data: { url: '/' },
-          tag: 'test-' + Date.now()
-        })
-        showStatus('Notificação de teste enviada.', 'success')
-      } catch (e) {
-        showStatus(String(e?.message || e || 'Falha ao testar notificação.'), 'error')
-      } finally {
-        btnTestNotif.disabled = false
-      }
-    }
-    const btnDiag = document.createElement('button')
-    btnDiag.type = 'button'
-    btnDiag.className = 'btn-secondary'
-    btnDiag.textContent = 'Diagnóstico do Push'
-    btnDiag.onclick = async () => {
-      btnDiag.disabled = true
-      try {
-        if (!('serviceWorker' in navigator)) throw new Error('Service Worker não suportado.')
-        const reg = await navigator.serviceWorker.ready
-        const sub = await reg.pushManager.getSubscription()
-        if (!sub) { showStatus('Sem inscrição neste dispositivo. Clique "Ativar Notificações".', 'error'); return }
-        const endpoint = String(sub.endpoint || '').trim()
-        if (!endpoint) { showStatus('Endpoint vazio na inscrição.', 'error'); return }
-        const tail = endpoint.slice(-12)
-        let dbInfo = 'não encontrado'
-        try {
-          const q = new URLSearchParams()
-          q.set('select', 'id,id_usuario,revoked_at')
-          q.set('endpoint', `eq.${endpoint}`)
-          q.set('limit', '5')
-          const res = await fetch(`/api/rest?table=push_subscriptions&${q.toString()}`, { method: 'GET' })
-          if (res.ok) {
-            const rows = await res.json().catch(() => [])
-            if (Array.isArray(rows) && rows.length) dbInfo = rows.map(r => `id=${r.id}, id_usuario=${r.id_usuario}, revogado=${!!r.revoked_at}`).join(' | ')
-          }
-        } catch {}
-        showStatus(`Sub OK (final ...${tail}). DB: ${dbInfo}`, 'success')
-      } catch (e) {
-        showStatus(String(e?.message || e || 'Falha no diagnóstico.'), 'error')
-      } finally {
-        btnDiag.disabled = false
-      }
-    }
     const btnLogout = document.createElement('button')
     btnLogout.type = 'button'
     btnLogout.className = 'danger'
@@ -2223,8 +2162,6 @@ function renderLoginScreen(schema, table) {
       activateTab('login')
     }
     actions.appendChild(btnEnablePush)
-    actions.appendChild(btnTestNotif)
-    actions.appendChild(btnDiag)
     actions.appendChild(btnLogout)
     card.appendChild(info)
     card.appendChild(actions)
