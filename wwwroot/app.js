@@ -2021,6 +2021,34 @@ function renderLoginScreen(schema, table) {
         btnEnablePush.disabled = false
       }
     }
+    const btnTestNotif = document.createElement('button')
+    btnTestNotif.type = 'button'
+    btnTestNotif.className = 'btn-secondary'
+    btnTestNotif.textContent = 'Testar Notificação'
+    btnTestNotif.onclick = async () => {
+      btnTestNotif.disabled = true
+      try {
+        if (!('Notification' in window)) throw new Error('Notificações não suportadas neste navegador.')
+        if (!('serviceWorker' in navigator)) throw new Error('Service Worker não suportado neste navegador.')
+        let perm = 'default'
+        try { perm = Notification.permission } catch {}
+        if (perm !== 'granted') perm = await Notification.requestPermission()
+        if (perm !== 'granted') throw new Error('Permissão de notificações negada.')
+        const reg = await navigator.serviceWorker.ready
+        await reg.showNotification('IEADM-ITAPEVA', {
+          body: 'Notificação de teste',
+          icon: '/tela-inicial.jpg',
+          badge: '/tela-inicial.jpg',
+          data: { url: '/' },
+          tag: 'test-' + Date.now()
+        })
+        showStatus('Notificação de teste enviada.', 'success')
+      } catch (e) {
+        showStatus(String(e?.message || e || 'Falha ao testar notificação.'), 'error')
+      } finally {
+        btnTestNotif.disabled = false
+      }
+    }
     const btnLogout = document.createElement('button')
     btnLogout.type = 'button'
     btnLogout.className = 'danger'
@@ -2031,6 +2059,7 @@ function renderLoginScreen(schema, table) {
       activateTab('login')
     }
     actions.appendChild(btnEnablePush)
+    actions.appendChild(btnTestNotif)
     actions.appendChild(btnLogout)
     card.appendChild(info)
     card.appendChild(actions)

@@ -29,9 +29,98 @@ function ensureEnv() {
 function normalizeVapidPrivateKey(k: string) {
   const s = String(k || '').trim()
   if (!s) return ''
-  if (/^[A-Za-z0-9\-_]+$/.test(s) && s.length >= 40 && s.length <= 80) return s
+  // Already looks like base64url little 'd' (32 bytes -> ~43 chars)
+  if (/^[A-Za-z0-9\-_]+$/.test(s) && s.length >= 42 && s.length <= 45) return s
+
+  function b64urlToBytes(input: string) {
+    const t = String(input || '').trim()
+    if (!t) return null
+    const pad = '='.repeat((4 - (t.length % 4)) % 4)
+    const b64 = t.replace(/-/g, '+').replace(/_/g, '/') + pad
+    try { return Buffer.from(b64, 'base64') } catch { return null }
+  }
+
+  function b64ToBytes(input: string) {
+    const t = String(input || '').trim()
+    if (!t) return null
+    try { return Buffer.from(t, 'base64') } catch { return null }
+  }
+
+  function bytesToB64Url(bytes: Uint8Array) {
+    return Buffer.from(bytes).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  }
+
+  function readDerLen(buf: Uint8Array, pos: number) {
+    const first = buf[pos]
+    if (first === undefined) return null
+    if ((first & 0x80) === 0) return { len: first, lenBytes: 1 }
+    const n = first & 0x7f
+    if (n === 0 || n > 4) return null
+    if (pos + 1 + n > buf.length) return null
+    let len = 0
+    for (let i = 0; i < n; i++) len = (len << 8) | buf[pos + 1 + i]
+    return { len, lenBytes: 1 + n }
+  }
+
+  function readDerTlv(buf: Uint8Array, pos: number) {
+    const tag = buf[pos]
+    if (tag === undefined) return null
+    const lenInfo = readDerLen(buf, pos + 1)
+    if (!lenInfo) return null
+    const start = pos + 1 + lenInfo.lenBytes
+    const end = start + lenInfo.len
+    if (end > buf.length) return null
+    return { tag, start, end, next: end }
+  }
+
+  function parseSec1EcPrivateKey(buf: Uint8Array) {
+    let p = 0
+    const seq = readDerTlv(buf, p)
+    if (!seq || seq.tag !== 0x30) return null
+    p = seq.start
+    const ver = readDerTlv(buf, p)
+    if (!ver || ver.tag !== 0x02) return null
+    p = ver.next
+    const key = readDerTlv(buf, p)
+    if (!key || key.tag !== 0x04) return null
+    const keyBytes = buf.slice(key.start, key.end)
+    if (keyBytes.length !== 32) return null
+    return keyBytes
+  }
+
+  function parsePkcs8(buf: Uint8Array) {
+    let p = 0
+    const seq = readDerTlv(buf, p)
+    if (!seq || seq.tag !== 0x30) return null
+    p = seq.start
+    const ver = readDerTlv(buf, p)
+    if (!ver || ver.tag !== 0x02) return null
+    p = ver.next
+    const alg = readDerTlv(buf, p)
+    if (!alg || alg.tag !== 0x30) return null
+    p = alg.next
+    const oct = readDerTlv(buf, p)
+    if (!oct || oct.tag !== 0x04) return null
+    const inner = buf.slice(oct.start, oct.end)
+    return inner
+  }
 
   try {
+    const bytes =
+      (/^[A-Za-z0-9\-_]+$/.test(s) ? b64urlToBytes(s) : null) ??
+      (/^[A-Za-z0-9+/=]+$/.test(s) ? b64ToBytes(s) : null)
+
+    if (bytes && bytes.length) {
+      const direct = parseSec1EcPrivateKey(bytes)
+      if (direct) return bytesToB64Url(direct)
+
+      const inner = parsePkcs8(bytes)
+      if (inner) {
+        const sec1 = parseSec1EcPrivateKey(inner)
+        if (sec1) return bytesToB64Url(sec1)
+      }
+    }
+
     let keyObj: any = null
     if (s.includes('-----BEGIN')) {
       keyObj = createPrivateKey({ key: s, format: 'pem' as any })
@@ -41,6 +130,20 @@ function normalizeVapidPrivateKey(k: string) {
         keyObj = createPrivateKey({ key: der, format: 'der' as any, type: 'sec1' as any })
       } catch {
         keyObj = createPrivateKey({ key: der, format: 'der' as any, type: 'pkcs8' as any })
+      }
+    } else if (/^[A-Za-z0-9\-_]+$/.test(s)) {
+      // base64url -> base64, then try DER
+      const pad = '='.repeat((4 - (s.length % 4)) % 4)
+      const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad
+      const der = Buffer.from(b64, 'base64')
+      try {
+        keyObj = createPrivateKey({ key: der, format: 'der' as any, type: 'sec1' as any })
+      } catch {
+        try {
+          keyObj = createPrivateKey({ key: der, format: 'der' as any, type: 'pkcs8' as any })
+        } catch {
+          keyObj = null
+        }
       }
     }
     if (!keyObj) return s
