@@ -275,12 +275,99 @@ const AUTH_STORAGE_KEY = 'ieadm_auth_v1'
 const LOGIN_ENABLED = true
 let authState = { userId: '', usuario: '', allowedNorm: new Set() }
 const MENU_COLLAPSED_KEY = 'ieadm_menu_collapsed_v1'
+let __routeApplying = false
+let __routeInitDone = false
 
 function setMenuCollapsed(nextCollapsed) {
   const collapsed = !!nextCollapsed
   try { document.body.classList.toggle('menu-collapsed', collapsed) } catch {}
   try { localStorage.setItem(MENU_COLLAPSED_KEY, collapsed ? '1' : '0') } catch {}
 }
+
+function __routeToHash(route) {
+  const p = String(route?.page ?? '').trim()
+  if (p === 'home') return '#/'
+  if (p === 'tab') {
+    const tab = String(route?.tab ?? '').trim()
+    if (!tab) return '#/'
+    if (normalizeText(tab) === 'membros') {
+      const view = String(route?.view ?? '').trim()
+      if (view === 'cadastro') {
+        const id = String(route?.id ?? '').trim()
+        return id ? `#/membros/cadastro/${encodeURIComponent(id)}` : '#/membros/cadastro'
+      }
+      return '#/membros/consulta'
+    }
+    return `#/${encodeURIComponent(tab)}`
+  }
+  return '#/'
+}
+
+function __parseRouteFromHash() {
+  const raw = String(location.hash || '')
+  const h = raw.replace(/^#\/?/, '')
+  if (!h) return { page: 'home' }
+  const parts = h.split('/').map(x => decodeURIComponent(x)).filter(Boolean)
+  const head = String(parts[0] || '').trim()
+  if (!head || head === 'home') return { page: 'home' }
+  if (normalizeText(head) === 'membros') {
+    const view = String(parts[1] || '').trim() || 'consulta'
+    if (view === 'cadastro') {
+      const id = String(parts[2] || '').trim()
+      return id ? { page: 'tab', tab: 'membros', view: 'cadastro', id } : { page: 'tab', tab: 'membros', view: 'cadastro' }
+    }
+    return { page: 'tab', tab: 'membros', view: 'consulta' }
+  }
+  return { page: 'tab', tab: head }
+}
+
+function __pushRoute(route, replace) {
+  if (__routeApplying) return
+  const r = route || { page: 'home' }
+  const url = __routeToHash(r)
+  try {
+    if (replace) history.replaceState(r, '', url)
+    else history.pushState(r, '', url)
+  } catch {}
+}
+
+function navigateHome(opts) {
+  renderHomeScreen()
+  try { setMenuCollapsed(false) } catch {}
+  __pushRoute({ page: 'home' }, !!opts?.replace)
+}
+
+async function __applyRoute(route) {
+  const r = route || { page: 'home' }
+  __routeApplying = true
+  try {
+    if (String(r?.page || '') === 'home') {
+      navigateHome({ replace: true })
+      return
+    }
+    if (String(r?.page || '') === 'tab') {
+      const tab = String(r?.tab || '').trim()
+      if (!tab) { navigateHome({ replace: true }); return }
+      activateTab(tab, { route: false })
+      if (normalizeText(tab) === 'membros') {
+        const h = window.__igrejaRouteMembers
+        if (h && typeof h.apply === 'function') {
+          await h.apply(r)
+        }
+      }
+      return
+    }
+    navigateHome({ replace: true })
+  } finally {
+    __routeApplying = false
+  }
+}
+
+window.addEventListener('popstate', (ev) => {
+  if (!schemaCache) return
+  const r = ev?.state || __parseRouteFromHash()
+  Promise.resolve(__applyRoute(r)).catch(() => {})
+})
 
 function normalizeText(v) {
   return String(v ?? '')
@@ -1101,7 +1188,7 @@ function renderMembersScreen(schema, table) {
         title.onclick = async () => {
           saveConsultaScrollPosition()
           await fillCadastro(item)
-          setActiveCadastro({ keep: true })
+          setActiveCadastro({ keep: true, id: String(item?.[table.pk] ?? '').trim(), scrollTop: true })
         }
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
         const btnDelete = document.createElement('button'); btnDelete.type = 'button'; btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
@@ -1784,6 +1871,7 @@ function renderMembersScreen(schema, table) {
     if (restoreY !== null) {
       Promise.resolve(p).then(() => restoreScrollY(restoreY)).catch(() => {})
     }
+    __pushRoute({ page: 'tab', tab: 'membros', view: 'consulta' }, true)
   }
   function clearCadastro() {
     idInput.value = ''
@@ -1806,6 +1894,13 @@ function renderMembersScreen(schema, table) {
       clearCadastro()
       setCadastroMode(true)
     }
+    const rid = String(opts?.id ?? idInput.value ?? '').trim()
+    __pushRoute(rid ? { page: 'tab', tab: 'membros', view: 'cadastro', id: rid } : { page: 'tab', tab: 'membros', view: 'cadastro' }, false)
+    if (opts?.scrollTop) {
+      try { panelCadastro.scrollTop = 0 } catch {}
+      try { (document.scrollingElement || document.documentElement || document.body).scrollTop = 0 } catch {}
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }) } catch { try { window.scrollTo(0, 0) } catch {} }
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const first =
@@ -1818,6 +1913,26 @@ function renderMembersScreen(schema, table) {
   }
   btnConsulta.onclick = setActiveConsulta
   btnCadastro.onclick = () => { saveConsultaScrollPosition(); setActiveCadastro() }
+  window.__igrejaRouteMembers = {
+    apply: async (r) => {
+      const view = String(r?.view ?? '').trim()
+      if (view === 'cadastro') {
+        const id = String(r?.id ?? '').trim()
+        if (id) {
+          try {
+            const rows = await apiGet(table.name, { select: '*', [table.pk]: `eq.${id}` })
+            const row = Array.isArray(rows) ? rows[0] : null
+            if (row) await fillCadastro(row)
+          } catch {}
+          setActiveCadastro({ keep: true, id, scrollTop: true })
+          return
+        }
+        setActiveCadastro()
+        return
+      }
+      setActiveConsulta()
+    }
+  }
   setActiveConsulta()
 }
 
@@ -1840,7 +1955,7 @@ function renderLoginScreen(schema, table) {
 
   async function refreshAfterAuth() {
     renderTabs(schemaCache)
-    renderHomeScreen()
+    navigateHome({ replace: true })
   }
 
   async function doLogin(login, password) {
@@ -4119,7 +4234,6 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
-            if (panelRel.style.display !== 'none') refreshReports()
           } catch (e) {
             showStatus(String(e?.message || e), 'error')
             if (wasPresent) {
@@ -4133,7 +4247,6 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
-            if (panelRel.style.display !== 'none') refreshReports()
           }
         }
         tr.appendChild(td)
@@ -4151,13 +4264,11 @@ function renderCirculoOracaoScreen(schema, table) {
     tableEl.appendChild(tbody)
     applyStickyOffsets()
     focusNearestDay()
-    refreshReports()
     showStatus('Pronto.', 'success')
   }
 
   window.addEventListener('resize', () => {
     applyStickyOffsets()
-    applyHeaderOffsetForTable(tableRel)
   })
   load().catch(e => showStatus(String(e?.message || e), 'error'))
 }
@@ -4165,7 +4276,7 @@ function renderCirculoOracaoScreen(schema, table) {
 
 let current = null
 let schemaCache = null
-function activateTab(name) {
+function activateTab(name, opts) {
   const all = Array.isArray(schemaCache?.tables) ? schemaCache.tables : []
   const visible = (!LOGIN_ENABLED
     ? all.filter(t => normalizeText(t?.name) !== 'login')
@@ -4187,6 +4298,9 @@ function activateTab(name) {
     btn.classList.toggle('active', btn.dataset.name === current)
   })
   renderTableScreen(schemaCache, chosen)
+  if (!opts || opts.route !== false) {
+    __pushRoute({ page: 'tab', tab: chosen.name }, !!opts?.replace)
+  }
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -4198,14 +4312,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       h1.setAttribute('role', 'button')
       h1.tabIndex = 0
       h1.onclick = () => {
-        renderHomeScreen()
-        setMenuCollapsed(false)
+        navigateHome()
       }
       h1.onkeydown = (ev) => {
         if (ev.key !== 'Enter' && ev.key !== ' ') return
         try { ev.preventDefault() } catch {}
-        renderHomeScreen()
-        setMenuCollapsed(false)
+        navigateHome()
       }
     }
     const header = document.querySelector('.app-header')
@@ -4246,14 +4358,27 @@ window.addEventListener('DOMContentLoaded', async () => {
   else clearAuth()
   schemaCache = await loadSchema()
   renderTabs(schemaCache)
+  const hasHash = !!String(location.hash || '').trim() && String(location.hash || '').trim() !== '#'
+  if (hasHash) {
+    const r = (history.state && typeof history.state === 'object') ? history.state : __parseRouteFromHash()
+    try { history.replaceState(r, '', __routeToHash(r)) } catch {}
+    await __applyRoute(r)
+    __routeInitDone = true
+    return
+  }
   if (!LOGIN_ENABLED) {
     const all = Array.isArray(schemaCache?.tables) ? schemaCache.tables : []
     const visible = all.filter(t => normalizeText(t?.name) !== 'login')
     const first = visible[0]
-    if (first) activateTab(first.name)
-  } else if (!authState.userId) {
-    activateTab('login')
-  } else {
-    renderHomeScreen()
+    if (first) activateTab(first.name, { replace: true })
+    __routeInitDone = true
+    return
   }
+  if (!authState.userId) {
+    activateTab('login', { replace: true })
+    __routeInitDone = true
+    return
+  }
+  navigateHome({ replace: true })
+  __routeInitDone = true
 })
