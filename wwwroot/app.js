@@ -1041,7 +1041,6 @@ function renderMembersScreen(schema, table) {
     }
   }
   async function refreshList() {
-    listWrap.innerHTML = ''
     try {
       const data = await apiList(table.name)
       const nomeQ = filtroNomeInput ? normText(filtroNomeInput.value) : ''
@@ -1093,6 +1092,7 @@ function renderMembersScreen(schema, table) {
       })
 
       console.log('Consulta:list', { count: Array.isArray(data) ? data.length : 0, filtered: filtered.length })
+      const frag = document.createDocumentFragment()
       filtered.forEach(item => {
         const div = document.createElement('div')
         div.className = 'list-item'
@@ -1140,9 +1140,12 @@ function renderMembersScreen(schema, table) {
         actionsDiv.appendChild(btnDelete)
         div.appendChild(title)
         div.appendChild(actionsDiv)
-        listWrap.appendChild(div)
+        frag.appendChild(div)
       })
+      listWrap.innerHTML = ''
+      listWrap.appendChild(frag)
     } catch (e) {
+      listWrap.innerHTML = ''
       listWrap.textContent = String(e.message || e)
     }
   }
@@ -1803,6 +1806,15 @@ function renderMembersScreen(schema, table) {
       clearCadastro()
       setCadastroMode(true)
     }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const first =
+          panelCadastro.querySelector('input:not([type="hidden"]):not([readonly]):not([disabled]),select:not([disabled]),textarea:not([readonly]):not([disabled])') ||
+          panelCadastro.querySelector('input:not([type="hidden"]),select,textarea')
+        if (!first) return
+        try { first.focus({ preventScroll: true }) } catch { try { first.focus() } catch {} }
+      })
+    })
   }
   btnConsulta.onclick = setActiveConsulta
   btnCadastro.onclick = () => { saveConsultaScrollPosition(); setActiveCadastro() }
@@ -1983,6 +1995,7 @@ function renderLoginScreen(schema, table) {
     authState.allowedNorm = allowedNorm
     saveAuth()
     await refreshAfterAuth()
+    try { setMenuCollapsed(false) } catch {}
     await maybePromptEnablePushAfterLogin(row, userId, showStatus)
     showStatus('Logado.', 'success')
   }
@@ -4179,7 +4192,22 @@ function activateTab(name) {
 window.addEventListener('DOMContentLoaded', async () => {
   try {
     const h1 = document.querySelector('.app-header h1')
-    if (h1) h1.textContent = 'IEADM-ITAPEVA'
+    if (h1) {
+      h1.textContent = 'IEADM-ITAPEVA'
+      h1.style.cursor = 'pointer'
+      h1.setAttribute('role', 'button')
+      h1.tabIndex = 0
+      h1.onclick = () => {
+        renderHomeScreen()
+        setMenuCollapsed(false)
+      }
+      h1.onkeydown = (ev) => {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return
+        try { ev.preventDefault() } catch {}
+        renderHomeScreen()
+        setMenuCollapsed(false)
+      }
+    }
     const header = document.querySelector('.app-header')
     if (header && !header.querySelector('.header-actions')) {
       const right = document.createElement('div')
