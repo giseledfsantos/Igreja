@@ -3669,19 +3669,18 @@ function renderEbdScreen(schema, table) {
   hCx.textContent = 'EBD - Caixa'
   cardCx.appendChild(hCx)
   const formCx = document.createElement('div')
-  const fTipo = document.createElement('div'); fTipo.className = 'field'
-  const lTipo = document.createElement('label'); lTipo.textContent = 'Tipo'
-  const iTipo = document.createElement('select')
-  ;['entrada','saida'].forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t.toUpperCase(); iTipo.appendChild(o) })
-  fTipo.appendChild(lTipo); fTipo.appendChild(iTipo)
   const fData = document.createElement('div'); fData.className = 'field'
   const lData = document.createElement('label'); lData.textContent = 'Data'
   const iData = document.createElement('input'); iData.type = 'date'
   fData.appendChild(lData); fData.appendChild(iData)
-  const fValor = document.createElement('div'); fValor.className = 'field'
-  const lValor = document.createElement('label'); lValor.textContent = 'Valor'
-  const iValor = document.createElement('input'); iValor.type = 'number'; iValor.step = '0.01'; iValor.inputMode = 'decimal'
-  fValor.appendChild(lValor); fValor.appendChild(iValor)
+  const fEntrada = document.createElement('div'); fEntrada.className = 'field'
+  const lEntrada = document.createElement('label'); lEntrada.textContent = 'Entrada'
+  const iEntrada = document.createElement('input'); iEntrada.type = 'number'; iEntrada.step = '0.01'; iEntrada.inputMode = 'decimal'
+  fEntrada.appendChild(lEntrada); fEntrada.appendChild(iEntrada)
+  const fSaida = document.createElement('div'); fSaida.className = 'field'
+  const lSaida = document.createElement('label'); lSaida.textContent = 'Saída'
+  const iSaida = document.createElement('input'); iSaida.type = 'number'; iSaida.step = '0.01'; iSaida.inputMode = 'decimal'
+  fSaida.appendChild(lSaida); fSaida.appendChild(iSaida)
   const fDesc = document.createElement('div'); fDesc.className = 'field'
   const lDesc = document.createElement('label'); lDesc.textContent = 'Descrição'
   const iDesc = document.createElement('input'); iDesc.type = 'text'
@@ -3689,9 +3688,9 @@ function renderEbdScreen(schema, table) {
   const actionsCx = document.createElement('div'); actionsCx.className = 'actions'
   const btnSalvarCx = document.createElement('button'); btnSalvarCx.type = 'button'; btnSalvarCx.className = 'icon-btn'; btnSalvarCx.title = 'Salvar'; btnSalvarCx.setAttribute('aria-label','Salvar'); setButtonIcon(btnSalvarCx,'save')
   actionsCx.appendChild(btnSalvarCx)
-  formCx.appendChild(fTipo)
   formCx.appendChild(fData)
-  formCx.appendChild(fValor)
+  formCx.appendChild(fEntrada)
+  formCx.appendChild(fSaida)
   formCx.appendChild(fDesc)
   formCx.appendChild(actionsCx)
   cardCx.appendChild(formCx)
@@ -3711,9 +3710,9 @@ function renderEbdScreen(schema, table) {
     return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`
   }
   function clearForm() {
-    iTipo.value = 'entrada'
     iData.value = todayStr()
-    iValor.value = ''
+    iEntrada.value = ''
+    iSaida.value = ''
     iDesc.value = ''
     editId = ''
   }
@@ -3766,11 +3765,10 @@ function renderEbdScreen(schema, table) {
     let totalIn = 0, totalOut = 0
     rows.forEach(r => {
       const dd = String(r?.data ?? '').slice(0, 10)
-      const tp = String(r?.tipo ?? '').toLowerCase()
-      const vv = Number(r?.valor ?? 0)
-      const isOut = tp === 'saida'
-      if (isOut) totalOut += vv
-      else totalIn += vv
+      const entrada = Number(r?.entrada ?? 0)
+      const saida = Number(r?.saida ?? 0)
+      if (Number.isFinite(entrada)) totalIn += entrada
+      if (Number.isFinite(saida)) totalOut += saida
 
       const actions = document.createElement('div'); actions.className = 'grid-actions'
       const btnEdit = document.createElement('button'); btnEdit.type = 'button'; btnEdit.className = 'icon-btn'; btnEdit.title = 'Editar'; setButtonIcon(btnEdit, 'edit')
@@ -3779,9 +3777,9 @@ function renderEbdScreen(schema, table) {
       btnEdit.onclick = (ev) => {
         try { ev?.stopPropagation?.() } catch {}
         editId = String(r?.id ?? '').trim()
-        iTipo.value = String(r?.tipo ?? '').toLowerCase() === 'saida' ? 'saida' : 'entrada'
         iData.value = String(r?.data ?? '').slice(0, 10) || todayStr()
-        iValor.value = String(r?.valor ?? '')
+        iEntrada.value = (r?.entrada === null || r?.entrada === undefined) ? '' : String(r?.entrada ?? '')
+        iSaida.value = (r?.saida === null || r?.saida === undefined) ? '' : String(r?.saida ?? '')
         iDesc.value = String(r?.descricao ?? '')
       }
       btnDel.onclick = async (ev) => {
@@ -3805,8 +3803,8 @@ function renderEbdScreen(schema, table) {
       const tdBtns = document.createElement('td'); tdBtns.rowSpan = 2; tdBtns.className = 'caixa-actions'
       tdBtns.appendChild(actions)
 
-      const tdEntrada = document.createElement('td'); tdEntrada.textContent = isOut ? '' : money(vv)
-      const tdSaida = document.createElement('td'); tdSaida.textContent = isOut ? money(vv) : ''
+      const tdEntrada = document.createElement('td'); tdEntrada.textContent = Number.isFinite(entrada) && entrada ? money(entrada) : ''
+      const tdSaida = document.createElement('td'); tdSaida.textContent = Number.isFinite(saida) && saida ? money(saida) : ''
 
       tr1.appendChild(tdData)
       tr1.appendChild(tdDesc)
@@ -3827,10 +3825,16 @@ function renderEbdScreen(schema, table) {
     if (trs.length) trs[trs.length - 1].scrollIntoView({ block: 'nearest' })
   }
   btnSalvarCx.onclick = async () => {
+    const entrada = iEntrada.value === '' ? null : Number(iEntrada.value)
+    const saida = iSaida.value === '' ? null : Number(iSaida.value)
+    if (!((entrada !== null && Number.isFinite(entrada)) || (saida !== null && Number.isFinite(saida)))) {
+      showStatus('Informe um valor em "Entrada" ou "Saída".', 'error')
+      return
+    }
     const payload = {
       data: (iData.value || null),
-      valor: iValor.value ? Number(iValor.value) : null,
-      tipo: String(iTipo.value || '').toLowerCase() || null,
+      entrada: entrada !== null && Number.isFinite(entrada) ? entrada : null,
+      saida: saida !== null && Number.isFinite(saida) ? saida : null,
       descricao: iDesc.value || null
     }
     try {
