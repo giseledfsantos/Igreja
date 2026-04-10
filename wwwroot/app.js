@@ -1037,7 +1037,7 @@ function renderMembersScreen(schema, table) {
   headRow.style.gap = '12px'
   const filtersWrap = document.createElement('div')
   filtersWrap.className = 'filters'
-  const totalWrap = document.createElement('div')
+  const totalWrap = document.createElement('h2')
   totalWrap.className = 'list-total'
   totalWrap.textContent = 'Total - 0'
   const listWrap = document.createElement('div')
