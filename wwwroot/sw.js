@@ -17,6 +17,11 @@ self.addEventListener('push', (event) => {
       data: { url },
       tag
     }
+    if (typeof data?.renotify === 'boolean') options.renotify = data.renotify
+    if (typeof data?.silent === 'boolean') options.silent = data.silent
+    if (typeof data?.requireInteraction === 'boolean') options.requireInteraction = data.requireInteraction
+    if (Array.isArray(data?.vibrate)) options.vibrate = data.vibrate
+    if (typeof data?.timestamp === 'number') options.timestamp = data.timestamp
     await self.registration.showNotification(title, options)
   }
   event.waitUntil(show())

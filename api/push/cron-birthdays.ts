@@ -297,6 +297,7 @@ export default async function handler(req: any, res: any) {
     let sent = 0
     let revoked = 0
     let errors = 0
+    const deliveries: Array<{ subId: string; userId: string; endpointTail: string; tag: string; ok: boolean; statusCode?: number }> = []
 
     for (const sub of activeSubs) {
       const subscription = {
@@ -309,6 +310,8 @@ export default async function handler(req: any, res: any) {
       if (!subscription.endpoint || !subscription.keys.p256dh || !subscription.keys.auth) continue
 
       const subId = String(sub?.id ?? '').trim()
+      const userId = String(sub?.id_usuario ?? '').trim()
+      const endpointTail = subscription.endpoint.slice(-12)
       const messages: Array<{ title: string; body: string; tag: string }> = []
 
       for (const m of aniversariosAmanha) {
@@ -322,11 +325,25 @@ export default async function handler(req: any, res: any) {
 
       for (const msg of messages) {
         try {
-          await webpush.sendNotification(subscription as any, JSON.stringify({ title: msg.title, body: msg.body, url: '/', tag: msg.tag }))
+          await webpush.sendNotification(
+            subscription as any,
+            JSON.stringify({
+              title: msg.title,
+              body: msg.body,
+              url: '/',
+              tag: msg.tag,
+              renotify: true,
+              silent: false,
+              timestamp: Date.now()
+            }),
+            { TTL: 60 * 60, headers: { Urgency: 'high' } } as any
+          )
           sent++
+          if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: true })
         } catch (e: any) {
           errors++
           const statusCode = Number(e?.statusCode ?? e?.status ?? 0)
+          if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: false, statusCode })
           if ((statusCode === 404 || statusCode === 410) && subId) {
             try {
               await supabasePatch(`/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(subId)}`, { revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
@@ -347,6 +364,7 @@ export default async function handler(req: any, res: any) {
       subs: activeSubs.length,
       allowedUsers: allowedUserIds.size,
       date: { today, tomorrow },
+      deliveries: debug ? deliveries : undefined,
       matches: debug
         ? {
             today: aniversariosHoje.map(m => ({ id: m?.id, nome: m?.nome })),
