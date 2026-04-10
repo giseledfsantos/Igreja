@@ -1897,7 +1897,10 @@ function renderMembersScreen(schema, table) {
     const rid = String(opts?.id ?? idInput.value ?? '').trim()
     __pushRoute(rid ? { page: 'tab', tab: 'membros', view: 'cadastro', id: rid } : { page: 'tab', tab: 'membros', view: 'cadastro' }, false)
     if (opts?.scrollTop) {
+      try { screens.scrollTop = 0 } catch {}
+      try { screens.scrollTo(0, 0) } catch {}
       try { panelCadastro.scrollTop = 0 } catch {}
+      try { cardCad.scrollIntoView({ block: 'start', behavior: 'auto' }) } catch {}
       try { (document.scrollingElement || document.documentElement || document.body).scrollTop = 0 } catch {}
       try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }) } catch { try { window.scrollTo(0, 0) } catch {} }
     }
