@@ -1030,11 +1030,16 @@ function renderMembersScreen(schema, table) {
   cardList.className = 'card'
   const hList = document.createElement('h2')
   hList.textContent = 'Lista de Membros'
+  const headRow = document.createElement('div')
+  headRow.style.display = 'flex'
+  headRow.style.alignItems = 'baseline'
+  headRow.style.justifyContent = 'space-between'
+  headRow.style.gap = '12px'
   const filtersWrap = document.createElement('div')
   filtersWrap.className = 'filters'
   const totalWrap = document.createElement('div')
   totalWrap.className = 'list-total'
-  totalWrap.textContent = 'Total de membros: 0'
+  totalWrap.textContent = 'Total - 0'
   const listWrap = document.createElement('div')
   listWrap.className = 'list-items'
   let lastConsultaScrollY = 0
@@ -1182,7 +1187,7 @@ function renderMembersScreen(schema, table) {
       })
 
       console.log('Consulta:list', { count: Array.isArray(data) ? data.length : 0, filtered: filtered.length })
-      totalWrap.textContent = `Total de membros: ${filtered.length}`
+      totalWrap.textContent = `Total - ${filtered.length}`
       const frag = document.createDocumentFragment()
       filtered.forEach(item => {
         const div = document.createElement('div')
@@ -1236,14 +1241,15 @@ function renderMembersScreen(schema, table) {
       listWrap.innerHTML = ''
       listWrap.appendChild(frag)
     } catch (e) {
-      totalWrap.textContent = 'Total de membros: 0'
+      totalWrap.textContent = 'Total - 0'
       listWrap.innerHTML = ''
       listWrap.textContent = String(e.message || e)
     }
   }
-  cardList.appendChild(hList)
+  headRow.appendChild(hList)
+  headRow.appendChild(totalWrap)
+  cardList.appendChild(headRow)
   cardList.appendChild(filtersWrap)
-  cardList.appendChild(totalWrap)
   cardList.appendChild(listWrap)
   panelConsulta.appendChild(cardList)
 
