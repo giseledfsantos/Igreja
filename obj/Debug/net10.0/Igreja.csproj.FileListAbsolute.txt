@@ -75,3 +75,5 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.cs
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-quayl7tug8-quayl7tug8.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-ujsfb7esoo-ujsfb7esoo.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\l2yt544cry-{0}-k7swktmxgk-k7swktmxgk.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-eks31vidqz-eks31vidqz.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-ktb2df62sq-ktb2df62sq.gz

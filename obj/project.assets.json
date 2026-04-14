@@ -127,11 +127,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\igreja\\Igreja.csproj",
+      "projectUniqueName": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
       "projectName": "Igreja",
-      "projectPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\igreja\\Igreja.csproj",
+      "projectPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\Igreja.csproj",
       "packagesPath": "C:\\Users\\zeleg\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\igreja\\obj\\",
+      "outputPath": "C:\\Users\\zeleg\\OneDrive\\Documentos\\Dev\\Igreja\\Igreja\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\zeleg\\AppData\\Roaming\\NuGet\\NuGet.Config"

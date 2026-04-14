@@ -457,6 +457,7 @@ button.danger { background: var(--danger); color: white; }
   isolation: isolate;
 }
 .ebd-wrap.ebd-one-day {
+  max-height: calc(100vh - 220px);
   scrollbar-width: none;
 }
 .ebd-wrap.ebd-one-day::-webkit-scrollbar {
