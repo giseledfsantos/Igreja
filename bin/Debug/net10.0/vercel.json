@@ -1,5 +1,8 @@
 {
   "outputDirectory": "wwwroot",
+  "crons": [
+    { "path": "/api/push/cron-birthdays", "schedule": "0 11 * * *" }
+  ],
   "rewrites": [
     { "source": "/db/rest/(.*)", "destination": "/api/rest?table=$1" },
     { "source": "/api/rest/(.*)", "destination": "/api/rest?table=$1" },
@@ -7,6 +10,9 @@
     { "source": "/styles.css", "destination": "/wwwroot/styles.css" },
     { "source": "/app.js", "destination": "/wwwroot/app.js" },
     { "source": "/schema.json", "destination": "/wwwroot/schema.json" },
+    { "source": "/manifest.json", "destination": "/wwwroot/manifest.json" },
+    { "source": "/sw.js", "destination": "/wwwroot/sw.js" },
+    { "source": "/tela-inicial.jpg", "destination": "/wwwroot/tela-inicial.jpg" },
     { "source": "/favicon.ico", "destination": "/api/favicon?type=ico" },
     { "source": "/favicon.png", "destination": "/api/favicon?type=png" },
     { "source": "/(.*)", "destination": "/wwwroot/index.html" }

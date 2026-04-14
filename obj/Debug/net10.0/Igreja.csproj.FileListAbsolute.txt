@@ -71,7 +71,7 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\bin\Debug\net10.0\BouncyCas
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\bin\Debug\net10.0\WebPush.dll
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.csproj.AssemblyReference.cache
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\mfiwmtsi9n-{0}-r67x8rfaq6-r67x8rfaq6.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\l2yt544cry-{0}-9j21ltgwhf-9j21ltgwhf.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.csproj.Up2Date
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-quayl7tug8-quayl7tug8.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-zk5xosrjpa-zk5xosrjpa.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-ujsfb7esoo-ujsfb7esoo.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\l2yt544cry-{0}-k7swktmxgk-k7swktmxgk.gz

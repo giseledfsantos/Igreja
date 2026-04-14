@@ -3967,6 +3967,10 @@ function renderCirculoOracaoScreen(schema, table) {
   const ENSAIOS_PRESENCA_TABLE_PRIMARY = 'ensaios_presenca'
   const ENSAIOS_PRESENCA_TABLE_FALLBACK = 'ebd_presenca_membros'
   let presencaTable = ENSAIOS_PRESENCA_TABLE_PRIMARY
+  const ENSAIOS_VISITANTES_TABLE = 'ensaios_visitantes'
+  const ENSAIOS_VISITANTES_PRESENCA_TABLE = 'ensaios_visitantes_presenca'
+  const VISITANTES_LS_KEY = 'ieadm_ensaios_circulo_visitantes_v1'
+  const VISITANTES_PRES_LS_KEY = 'ieadm_ensaios_circulo_visitantes_pres_v1'
 
   const GRUPOS_TABLE = 'grupos'
   const MEMBROS_GRUPO_TABLE = 'membros_grupo'
@@ -3979,6 +3983,13 @@ function renderCirculoOracaoScreen(schema, table) {
   let presencaMembrosMembroKey = 'id_membro'
   let presencaMembrosDataKey = 'data_presenca'
   const presSet = new Set()
+  const VISITANTE_KEYS = ['id_visitante', 'visitante_id', 'visitantes_id', 'idVisitante', 'visitante', 'id']
+  let presencaVisitantesVisitanteKey = 'id_visitante'
+  let presencaVisitantesDataKey = 'data'
+  let visitantesMode = 'local'
+  let visitantesPresencaMode = 'local'
+  let visitantes = []
+  const visPresSet = new Set()
 
   function freqTextForMember(memberId) {
     if (!denomToDate) return '0,00%'
@@ -3988,6 +3999,45 @@ function renderCirculoOracaoScreen(schema, table) {
     }
     const pct = (present / denomToDate) * 100
     return `${pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+  }
+
+  function freqTextForVisitor(visitorId) {
+    if (!denomToDate) return '0,00%'
+    let present = 0
+    for (const iso of mondayIsosToDate) {
+      if (visPresSet.has(`${visitorId}|${iso}`)) present += 1
+    }
+    const pct = (present / denomToDate) * 100
+    return `${pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+  }
+
+  function lsReadJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return fallback
+      return JSON.parse(raw)
+    } catch {
+      return fallback
+    }
+  }
+  function lsWriteJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
+  }
+  function loadVisitantesLocal() {
+    const list = lsReadJson(VISITANTES_LS_KEY, [])
+    return (Array.isArray(list) ? list : [])
+      .map(x => ({ id: String(x?.id ?? '').trim(), nome: String(x?.nome ?? '').trim() }))
+      .filter(x => x.id && x.nome)
+  }
+  function saveVisitantesLocal(list) {
+    lsWriteJson(VISITANTES_LS_KEY, Array.isArray(list) ? list : [])
+  }
+  function loadVisitantesPresLocal() {
+    const arr = lsReadJson(VISITANTES_PRES_LS_KEY, [])
+    return new Set((Array.isArray(arr) ? arr : []).map(x => String(x ?? '').trim()).filter(Boolean))
+  }
+  function saveVisitantesPresLocal() {
+    lsWriteJson(VISITANTES_PRES_LS_KEY, Array.from(visPresSet))
   }
 
   function buildHeader() {
@@ -4053,8 +4103,27 @@ function renderCirculoOracaoScreen(schema, table) {
     try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
   }
 
+  const visitantesField = document.createElement('div')
+  visitantesField.className = 'field'
+  const visitantesLabel = document.createElement('label')
+  visitantesLabel.textContent = 'Adicionar visitante'
+  visitantesField.appendChild(visitantesLabel)
+  const visitantesActions = document.createElement('div')
+  visitantesActions.className = 'actions'
+  const iVisitante = document.createElement('input')
+  iVisitante.placeholder = 'Nome do visitante'
+  iVisitante.style.flex = '1 1 auto'
+  const btnAddVisitante = document.createElement('button')
+  btnAddVisitante.type = 'button'
+  btnAddVisitante.textContent = 'Adicionar'
+  visitantesActions.appendChild(iVisitante)
+  visitantesActions.appendChild(btnAddVisitante)
+  visitantesField.appendChild(visitantesActions)
+  card.appendChild(visitantesField)
+
   async function load() {
     showStatus('Carregando...', 'success')
+    btnAddVisitante.disabled = true
 
     let grupoId = ''
     try {
@@ -4140,11 +4209,81 @@ function renderCirculoOracaoScreen(schema, table) {
       }
     }
 
+    visitantes = []
+    visPresSet.clear()
+    visitantesMode = 'local'
+    visitantesPresencaMode = 'local'
+    try {
+      const rows = await apiGet(ENSAIOS_VISITANTES_TABLE, { select: '*' })
+      const list = Array.isArray(rows) ? rows : []
+      const sample = list[0] || {}
+      const idKey = firstExistingKey(sample, ['id', 'visitante_id', 'id_visitante']) || 'id'
+      const nomeKey = guessLabelKey(sample)
+      visitantes = list
+        .map(r => ({ id: String(r?.[idKey] ?? '').trim(), nome: String(r?.[nomeKey] ?? '').trim() }))
+        .filter(x => x.id && x.nome)
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+      visitantesMode = 'db'
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      if (msg.includes('Could not find') || msg.includes('relation') || msg.includes('404')) {
+        visitantes = loadVisitantesLocal()
+      } else {
+        visitantes = loadVisitantesLocal()
+      }
+    }
+    try {
+      if (visitantesMode === 'db') {
+        const rows = await apiGet(ENSAIOS_VISITANTES_PRESENCA_TABLE, { select: '*' })
+        const list = Array.isArray(rows) ? rows : []
+        list.forEach(r => {
+          const vidVal = firstExistingValue(r, VISITANTE_KEYS)
+          const dtVal = firstExistingValue(r, DATA_KEYS)
+          const vid = vidVal === null ? '' : String(vidVal).trim()
+          const dt = dateOnly(dtVal === null ? '' : String(dtVal).trim())
+          if (!vid || !dt) return
+          if (!dt.startsWith(`${year}-`)) return
+          visPresSet.add(`${vid}|${dt}`)
+          const vk = firstExistingKey(r, VISITANTE_KEYS)
+          const dk = firstExistingKey(r, DATA_KEYS)
+          if (vk) presencaVisitantesVisitanteKey = vk
+          if (dk) presencaVisitantesDataKey = dk
+        })
+        visitantesPresencaMode = 'db'
+      } else {
+        const set = loadVisitantesPresLocal()
+        set.forEach(k => {
+          const parts = String(k || '').split('|')
+          if (parts.length !== 2) return
+          const dt = dateOnly(parts[1])
+          if (!dt.startsWith(`${year}-`)) return
+          visPresSet.add(`${parts[0]}|${dt}`)
+        })
+        visitantesPresencaMode = 'local'
+      }
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      if (msg.includes('Could not find') || msg.includes('relation') || msg.includes('404')) {
+        const set = loadVisitantesPresLocal()
+        set.forEach(k => {
+          const parts = String(k || '').split('|')
+          if (parts.length !== 2) return
+          const dt = dateOnly(parts[1])
+          if (!dt.startsWith(`${year}-`)) return
+          visPresSet.add(`${parts[0]}|${dt}`)
+        })
+        visitantesPresencaMode = 'local'
+      } else {
+        visitantesPresencaMode = 'local'
+      }
+    }
+
     tableEl.innerHTML = ''
     tableEl.appendChild(buildHeader())
     const tbody = document.createElement('tbody')
     const frag = document.createDocumentFragment()
     const freqCells = new Map()
+    const freqCellsVisitantes = new Map()
 
     membros.forEach(m => {
       const tr = document.createElement('tr')
@@ -4216,11 +4355,133 @@ function renderCirculoOracaoScreen(schema, table) {
 
       frag.appendChild(tr)
     })
+
+    const trGroup = document.createElement('tr')
+    trGroup.className = 'ebd-group'
+    const tdGroup = document.createElement('td')
+    tdGroup.textContent = 'Visitantes'
+    tdGroup.className = 'ebd-sticky ebd-sticky-1'
+    trGroup.appendChild(tdGroup)
+    const tdGroupRest = document.createElement('td')
+    tdGroupRest.colSpan = mondays.length + 1
+    tdGroupRest.textContent = ''
+    trGroup.appendChild(tdGroupRest)
+    frag.appendChild(trGroup)
+
+    visitantes.forEach(v => {
+      const tr = document.createElement('tr')
+
+      const tdNome = document.createElement('td')
+      tdNome.textContent = v.nome
+      tdNome.className = 'ebd-sticky ebd-sticky-1'
+      tr.appendChild(tdNome)
+
+      mondays.forEach(s => {
+        const td = document.createElement('td')
+        td.className = 'ebd-cell'
+        const k = `${v.id}|${s.iso}`
+        const present = visPresSet.has(k)
+        if (present) {
+          td.textContent = 'P'
+          td.classList.add('present')
+        } else {
+          td.textContent = ''
+        }
+        td.onclick = async () => {
+          const visitanteVal = /^\d+$/.test(String(v.id)) ? Number(v.id) : v.id
+          const wasPresent = visPresSet.has(k)
+          if (wasPresent) {
+            visPresSet.delete(k)
+            td.textContent = ''
+            td.classList.remove('present')
+          } else {
+            visPresSet.add(k)
+            td.textContent = 'P'
+            td.classList.add('present')
+          }
+          const fc0 = freqCellsVisitantes.get(v.id)
+          if (fc0) fc0.textContent = freqTextForVisitor(v.id)
+          try {
+            if (visitantesMode === 'db' && visitantesPresencaMode === 'db') {
+              if (wasPresent) {
+                await tryDeleteWhere(ENSAIOS_VISITANTES_PRESENCA_TABLE, DATA_KEYS.flatMap(dk => VISITANTE_KEYS.map(vk => ({ [vk]: `eq.${v.id}`, [dk]: `eq.${s.iso}` }))))
+              } else {
+                const payloads = []
+                payloads.push({ [presencaVisitantesVisitanteKey]: visitanteVal, [presencaVisitantesDataKey]: s.iso })
+                VISITANTE_KEYS.forEach(vk => DATA_KEYS.forEach(dk => payloads.push({ [vk]: visitanteVal, [dk]: s.iso })))
+                await tryCreateOne(ENSAIOS_VISITANTES_PRESENCA_TABLE, payloads)
+              }
+            } else {
+              saveVisitantesPresLocal()
+            }
+            const fc = freqCellsVisitantes.get(v.id)
+            if (fc) fc.textContent = freqTextForVisitor(v.id)
+          } catch (e) {
+            showStatus(String(e?.message || e), 'error')
+            if (wasPresent) {
+              visPresSet.add(k)
+              td.textContent = 'P'
+              td.classList.add('present')
+            } else {
+              visPresSet.delete(k)
+              td.textContent = ''
+              td.classList.remove('present')
+            }
+            const fc = freqCellsVisitantes.get(v.id)
+            if (fc) fc.textContent = freqTextForVisitor(v.id)
+          }
+        }
+        tr.appendChild(td)
+      })
+
+      const tdFreq = document.createElement('td')
+      tdFreq.textContent = freqTextForVisitor(v.id)
+      tdFreq.className = 'ebd-freq'
+      tr.appendChild(tdFreq)
+      freqCellsVisitantes.set(v.id, tdFreq)
+
+      frag.appendChild(tr)
+    })
     tbody.appendChild(frag)
     tableEl.appendChild(tbody)
     applyStickyOffsets()
     focusNearestDay()
     showStatus('Pronto.', 'success')
+    btnAddVisitante.disabled = false
+  }
+
+  async function addVisitante() {
+    const nome = String(iVisitante.value || '').trim()
+    if (!nome) return
+    const nmNorm = normalizeText(nome)
+    const has = (Array.isArray(visitantes) ? visitantes : []).some(v => normalizeText(String(v?.nome || '')) === nmNorm)
+    if (has) {
+      iVisitante.value = ''
+      return
+    }
+    btnAddVisitante.disabled = true
+    try {
+      if (visitantesMode === 'db') {
+        await tryCreateOne(ENSAIOS_VISITANTES_TABLE, [{ nome }, { name: nome }, { descricao: nome }, { visitante: nome }])
+      } else {
+        const list = loadVisitantesLocal()
+        const id = `v_${Date.now()}_${Math.random().toString(16).slice(2)}`
+        list.push({ id, nome })
+        saveVisitantesLocal(list)
+      }
+      iVisitante.value = ''
+      await load()
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+      btnAddVisitante.disabled = false
+    }
+  }
+
+  btnAddVisitante.onclick = () => { addVisitante().catch(e => showStatus(String(e?.message || e), 'error')) }
+  iVisitante.onkeydown = (ev) => {
+    if (ev.key !== 'Enter') return
+    try { ev.preventDefault() } catch {}
+    addVisitante().catch(e => showStatus(String(e?.message || e), 'error'))
   }
 
   window.addEventListener('resize', () => {
