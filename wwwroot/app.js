@@ -2849,19 +2849,26 @@ function renderEbdScreen(schema, table) {
   const btnCaixa = document.createElement('button')
   btnCaixa.className = 'subtab'
   btnCaixa.textContent = 'Caixa'
+  const btnRevistas = document.createElement('button')
+  btnRevistas.className = 'subtab'
+  btnRevistas.textContent = 'Revistas'
   subtabs.appendChild(btnFreq)
   subtabs.appendChild(btnRel)
   subtabs.appendChild(btnCaixa)
+  subtabs.appendChild(btnRevistas)
   screens.appendChild(subtabs)
 
   const panelFreq = document.createElement('div')
   const panelRel = document.createElement('div')
   const panelCaixa = document.createElement('div')
+  const panelRevistas = document.createElement('div')
   panelRel.style.display = 'none'
   panelCaixa.style.display = 'none'
+  panelRevistas.style.display = 'none'
   screens.appendChild(panelFreq)
   screens.appendChild(panelRel)
   screens.appendChild(panelCaixa)
+  screens.appendChild(panelRevistas)
 
   const card = document.createElement('section')
   card.className = 'card'
@@ -2930,6 +2937,10 @@ function renderEbdScreen(schema, table) {
   const EBD_TURMAS_MEMBROS_TABLE = 'ebd_turmas_membros'
   const EBD_PRESENCA_MEMBROS_TABLE = 'ebd_presenca_membros'
   const EBD_RELATORIOS_TABLE = 'ebd_relatorios'
+  const EBD_TRIMESTRE_TABLE = 'ebd_trimestre'
+  const EBD_REVISTA_TABLE = 'ebd_revista'
+  const EBD_REVISTA_TRIMESTRE_TABLE = 'ebd_revista_trimestre'
+  const EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE = 'ebd_membro_revista_trimestre'
   let turmasCache = []
   let turmasIdKey = 'id'
   let turmasLabelKey = 'nome'
@@ -2943,10 +2954,32 @@ function renderEbdScreen(schema, table) {
   let turmaOptionsCache = []
   const relByTurmaDay = new Map()
   const relSaveTimers = new Map()
+  let trimestresCache = []
+  let trimestreIdKey = 'id'
+  let trimestreLabelKey = 'descricao'
+  let revistasCache = []
+  let revistaIdKey = 'id'
+  let revistaLabelKey = 'descricao'
+  let revistasTrimestreCache = []
+  let revistaTrimestreIdKey = 'id'
+  let revistaTrimestreRevistaKey = 'id_revista'
+  let revistaTrimestreTrimestreKey = 'id_trimestre'
+  let revistaTrimestreQdeKey = 'qde_pedido'
+  let revistaTrimestreValorKey = 'valor'
+  let membrosRevistaTrimestreCache = []
+  let membroRevistaTrimestreIdKey = 'id'
+  let membroRevistaTrimestreMembroKey = 'id_membro'
+  let membroRevistaTrimestreRevistaTrimKey = 'id_revista_trimestre'
+  let membroRevistaTrimestrePagoKey = 'pago'
+  let membroRevistaTrimestreEntregueKey = 'entregue'
+  let membroRevistaTrimestreValorPagarKey = 'valor_a_pagar'
 
   const MEMBRO_KEYS = ['id_membro', 'membro_id', 'membros_id', 'idMembro', 'id_aluno', 'aluno_id', 'idAluno', 'aluno', 'membro']
   const TURMA_KEYS = ['id_turma', 'turma_id', 'turmas_id', 'idTurma', 'ebd_turma_id', 'id_ebd_turma', 'ebdTurmaId', 'turma', 'id_ebd_turmas', 'ebd_turmas_id']
   const DATA_KEYS = ['data', 'dia', 'data_aula', 'data_domingo', 'data_presenca', 'dataDomingo', 'dataPresenca']
+  const TRIMESTRE_KEYS = ['id_trimestre', 'trimestre_id', 'trimestres_id', 'idTrimestre', 'trimestre']
+  const REVISTA_KEYS = ['id_revista', 'revista_id', 'revistas_id', 'idRevista', 'revista']
+  const REVISTA_TRIMESTRE_KEYS = ['id_revista_trimestre', 'revista_trimestre_id', 'revistas_trimestre_id', 'idRevistaTrimestre', 'revista_trimestre']
 
   function firstExistingKey(obj, keys) {
     for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
@@ -3158,6 +3191,18 @@ function renderEbdScreen(schema, table) {
     const i = Math.trunc(n)
     if (i < 0) return null
     return i
+  }
+
+  function toBool(v) {
+    if (v === true || v === false) return v
+    const s = normalizeText(String(v ?? ''))
+    return s === 'true' || s === '1' || s === 'sim' || s === 'yes' || s === 'ok'
+  }
+
+  function moneyBr(v) {
+    const n = Number(v)
+    if (!Number.isFinite(n)) return 'R$ 0,00'
+    return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   function getRelRow(turmaId, iso) {
@@ -3856,12 +3901,497 @@ function renderEbdScreen(schema, table) {
   clearForm()
   refreshList()
 
-  function setActiveFreq() { btnFreq.classList.add('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); panelFreq.style.display=''; panelRel.style.display='none'; panelCaixa.style.display='none' }
-  function setActiveRel() { btnRel.classList.add('active'); btnFreq.classList.remove('active'); btnCaixa.classList.remove('active'); panelRel.style.display=''; panelFreq.style.display='none'; panelCaixa.style.display='none'; refreshReports() }
-  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none' }
+  const cardRevistas = document.createElement('section')
+  cardRevistas.className = 'card'
+  const hRevistas = document.createElement('h2')
+  hRevistas.textContent = 'EBD - Revistas'
+  cardRevistas.appendChild(hRevistas)
+
+  const fTrim = document.createElement('div')
+  fTrim.className = 'field'
+  const lTrim = document.createElement('label')
+  lTrim.textContent = 'Trimestre'
+  const selTrim = document.createElement('select')
+  fTrim.appendChild(lTrim)
+  fTrim.appendChild(selTrim)
+  cardRevistas.appendChild(fTrim)
+
+  const listRevWrap = document.createElement('div')
+  listRevWrap.className = 'ebd-wrap'
+  const tableRevMembros = document.createElement('table')
+  tableRevMembros.className = 'ebd-table'
+  listRevWrap.appendChild(tableRevMembros)
+  cardRevistas.appendChild(listRevWrap)
+
+  const resumoMembros = document.createElement('div')
+  resumoMembros.className = 'saldo'
+  cardRevistas.appendChild(resumoMembros)
+  panelRevistas.appendChild(cardRevistas)
+
+  const cardResumoRev = document.createElement('section')
+  cardResumoRev.className = 'card'
+  const hResumoRev = document.createElement('h2')
+  hResumoRev.textContent = 'Relação de Revistas'
+  cardResumoRev.appendChild(hResumoRev)
+  const resumoRevWrap = document.createElement('div')
+  resumoRevWrap.className = 'ebd-wrap'
+  const tableResumoRev = document.createElement('table')
+  tableResumoRev.className = 'ebd-table'
+  resumoRevWrap.appendChild(tableResumoRev)
+  cardResumoRev.appendChild(resumoRevWrap)
+  panelRevistas.appendChild(cardResumoRev)
+
+  let selectedTrimestreId = ''
+  let revistasLoading = false
+  function asId(v) { return String(v ?? '').trim() }
+  function toNumberOrNull(v) {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  function toIntOrNull(v) {
+    const n = Number(v)
+    if (!Number.isFinite(n)) return null
+    return Math.trunc(n)
+  }
+  function boolMark(v) { return toBool(v) ? 'PG' : '' }
+
+  async function loadTrimestresOptions() {
+    try {
+      const rows = await apiList(EBD_TRIMESTRE_TABLE)
+      trimestresCache = Array.isArray(rows) ? rows : []
+      const sample = trimestresCache[0] || {}
+      trimestreIdKey = pickKey(sample, ['id', 'trimestre_id', 'codigo'])
+      trimestreLabelKey = guessLabelKey(sample)
+    } catch (e) {
+      trimestresCache = []
+      showStatus(String(e?.message || e), 'error')
+    }
+    selTrim.innerHTML = ''
+    const optEmpty = document.createElement('option')
+    optEmpty.value = ''
+    optEmpty.textContent = 'Selecione'
+    selTrim.appendChild(optEmpty)
+    trimestresCache
+      .map(t => ({ id: asId(t?.[trimestreIdKey]), label: String(t?.[trimestreLabelKey] ?? t?.[trimestreIdKey] ?? '').trim() }))
+      .filter(x => x.id)
+      .forEach(x => {
+        const opt = document.createElement('option')
+        opt.value = x.id
+        opt.textContent = x.label || x.id
+        selTrim.appendChild(opt)
+      })
+    if (!selectedTrimestreId || !trimestresCache.some(t => asId(t?.[trimestreIdKey]) === selectedTrimestreId)) {
+      selectedTrimestreId = trimestresCache.length ? asId(trimestresCache[0]?.[trimestreIdKey]) : ''
+    }
+    selTrim.value = selectedTrimestreId
+  }
+
+  async function loadRevistasData() {
+    try {
+      const rows = await apiList(EBD_REVISTA_TABLE)
+      revistasCache = Array.isArray(rows) ? rows : []
+      const sample = revistasCache[0] || {}
+      revistaIdKey = pickKey(sample, ['id', 'revista_id', 'codigo'])
+      revistaLabelKey = guessLabelKey(sample)
+    } catch (e) {
+      revistasCache = []
+      showStatus(String(e?.message || e), 'error')
+    }
+    try {
+      const rows = await apiGet(EBD_REVISTA_TRIMESTRE_TABLE, { select: '*' })
+      revistasTrimestreCache = Array.isArray(rows) ? rows : []
+      const sample = revistasTrimestreCache[0] || {}
+      revistaTrimestreIdKey = pickKey(sample, ['id', 'revista_trimestre_id'])
+      revistaTrimestreRevistaKey = firstExistingKey(sample, REVISTA_KEYS) || 'id_revista'
+      revistaTrimestreTrimestreKey = firstExistingKey(sample, TRIMESTRE_KEYS) || 'id_trimestre'
+      revistaTrimestreQdeKey = firstExistingKey(sample, ['qde_pedido', 'quantidade', 'qde']) || 'qde_pedido'
+      revistaTrimestreValorKey = firstExistingKey(sample, ['valor', 'preco', 'valor_revista']) || 'valor'
+    } catch (e) {
+      revistasTrimestreCache = []
+      showStatus(String(e?.message || e), 'error')
+    }
+    try {
+      const rows = await apiGet(EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE, { select: '*' })
+      membrosRevistaTrimestreCache = Array.isArray(rows) ? rows : []
+      const sample = membrosRevistaTrimestreCache[0] || {}
+      membroRevistaTrimestreIdKey = pickKey(sample, ['id', 'membro_revista_trimestre_id'])
+      membroRevistaTrimestreMembroKey = firstExistingKey(sample, MEMBRO_KEYS) || 'id_membro'
+      membroRevistaTrimestreRevistaTrimKey = firstExistingKey(sample, REVISTA_TRIMESTRE_KEYS) || 'id_revista_trimestre'
+      membroRevistaTrimestrePagoKey = firstExistingKey(sample, ['pago', 'is_pago']) || 'pago'
+      membroRevistaTrimestreEntregueKey = firstExistingKey(sample, ['entregue', 'is_entregue']) || 'entregue'
+      membroRevistaTrimestreValorPagarKey = firstExistingKey(sample, ['valor_a_pagar', 'valor_pagar', 'total_a_pagar', 'valorTotal', 'valor_total']) || 'valor_a_pagar'
+    } catch (e) {
+      membrosRevistaTrimestreCache = []
+      showStatus(String(e?.message || e), 'error')
+    }
+  }
+
+  function getRevistaTrimestreByTrimAndRev(trimId, revistaId) {
+    return (revistasTrimestreCache || []).find(r =>
+      asId(r?.[revistaTrimestreTrimestreKey]) === asId(trimId) &&
+      asId(r?.[revistaTrimestreRevistaKey]) === asId(revistaId))
+  }
+
+  async function ensureRevistaTrimestre(trimId, revistaId) {
+    const found = getRevistaTrimestreByTrimAndRev(trimId, revistaId)
+    if (found) return asId(found?.[revistaTrimestreIdKey])
+    const defaultValor = 0
+    const trimVal = /^\d+$/.test(String(trimId)) ? Number(trimId) : trimId
+    const revVal = /^\d+$/.test(String(revistaId)) ? Number(revistaId) : revistaId
+    const payload = {
+      [revistaTrimestreRevistaKey]: revVal,
+      [revistaTrimestreTrimestreKey]: trimVal,
+      [revistaTrimestreQdeKey]: 0,
+      [revistaTrimestreValorKey]: defaultValor
+    }
+    await tryCreateOne(EBD_REVISTA_TRIMESTRE_TABLE, [payload, { id_revista: revVal, id_trimestre: trimVal, qde_pedido: 0, valor: defaultValor }])
+    const rows = await apiGet(EBD_REVISTA_TRIMESTRE_TABLE, { select: '*' })
+    revistasTrimestreCache = Array.isArray(rows) ? rows : []
+    const created = getRevistaTrimestreByTrimAndRev(trimId, revistaId)
+    return asId(created?.[revistaTrimestreIdKey])
+  }
+
+  async function persistMembroRevista(mid, rowId, revistaTrimId, valorAPagar, pago, entregue) {
+    const membroVal = /^\d+$/.test(String(mid)) ? Number(mid) : mid
+    const revistaTrimVal = /^\d+$/.test(String(revistaTrimId)) ? Number(revistaTrimId) : revistaTrimId
+    if (!revistaTrimId) {
+      if (rowId) await apiDelete(EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE, membroRevistaTrimestreIdKey, rowId)
+      return
+    }
+    const payload = {
+      [membroRevistaTrimestreMembroKey]: membroVal,
+      [membroRevistaTrimestreRevistaTrimKey]: revistaTrimVal,
+      [membroRevistaTrimestreValorPagarKey]: valorAPagar,
+      [membroRevistaTrimestrePagoKey]: !!pago,
+      [membroRevistaTrimestreEntregueKey]: !!entregue
+    }
+    if (rowId) {
+      await apiUpdate(EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE, membroRevistaTrimestreIdKey, rowId, payload)
+      return
+    }
+    const payloads = [payload]
+    MEMBRO_KEYS.forEach(mk => REVISTA_TRIMESTRE_KEYS.forEach(rk => payloads.push({ [mk]: membroVal, [rk]: revistaTrimVal, valor_a_pagar: valorAPagar, pago: !!pago, entregue: !!entregue })))
+    await tryCreateOne(EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE, payloads)
+  }
+
+  async function persistRevistaResumoRow(revistaId, valor, qde) {
+    if (!selectedTrimestreId || !revistaId) return
+    const existing = getRevistaTrimestreByTrimAndRev(selectedTrimestreId, revistaId)
+    const trimVal = /^\d+$/.test(String(selectedTrimestreId)) ? Number(selectedTrimestreId) : selectedTrimestreId
+    const revVal = /^\d+$/.test(String(revistaId)) ? Number(revistaId) : revistaId
+    const payload = {
+      [revistaTrimestreRevistaKey]: revVal,
+      [revistaTrimestreTrimestreKey]: trimVal,
+      [revistaTrimestreQdeKey]: qde,
+      [revistaTrimestreValorKey]: valor
+    }
+    if (existing && asId(existing?.[revistaTrimestreIdKey])) {
+      await apiUpdate(EBD_REVISTA_TRIMESTRE_TABLE, revistaTrimestreIdKey, asId(existing?.[revistaTrimestreIdKey]), payload)
+    } else {
+      await tryCreateOne(EBD_REVISTA_TRIMESTRE_TABLE, [payload, { id_revista: revVal, id_trimestre: trimVal, qde_pedido: qde, valor }])
+    }
+  }
+
+  async function refreshRevistas() {
+    if (revistasLoading) return
+    revistasLoading = true
+    selTrim.disabled = true
+    try {
+      await loadTrimestresOptions()
+      await loadRevistasData()
+
+      const revistaById = new Map()
+      ;(revistasCache || []).forEach(r => revistaById.set(asId(r?.[revistaIdKey]), r))
+      const revTrimById = new Map()
+      ;(revistasTrimestreCache || []).forEach(r => revTrimById.set(asId(r?.[revistaTrimestreIdKey]), r))
+
+      const membroLinkAll = new Map()
+      const membroLinkTrim = new Map()
+      ;(membrosRevistaTrimestreCache || []).forEach(r => {
+        const rowId = asId(r?.[membroRevistaTrimestreIdKey])
+        const mid = asId(r?.[membroRevistaTrimestreMembroKey])
+        const rtid = asId(r?.[membroRevistaTrimestreRevistaTrimKey])
+        if (!mid || !rtid) return
+        const rt = revTrimById.get(rtid)
+        if (!rt) return
+        const trimId = asId(rt?.[revistaTrimestreTrimestreKey])
+        const existingAll = membroLinkAll.get(mid)
+        if (!existingAll || Number(rowId || 0) > Number(asId(existingAll?.[membroRevistaTrimestreIdKey]) || 0)) membroLinkAll.set(mid, r)
+        if (trimId === selectedTrimestreId) {
+          const existingTrim = membroLinkTrim.get(mid)
+          if (!existingTrim || Number(rowId || 0) > Number(asId(existingTrim?.[membroRevistaTrimestreIdKey]) || 0)) membroLinkTrim.set(mid, r)
+        }
+      })
+
+      const totalPagarAllByMembro = new Map()
+      ;(membrosRevistaTrimestreCache || []).forEach(r => {
+        const mid = asId(r?.[membroRevistaTrimestreMembroKey])
+        const rtid = asId(r?.[membroRevistaTrimestreRevistaTrimKey])
+        if (!mid || !rtid) return
+        const savedValor = toNumberOrNull(r?.[membroRevistaTrimestreValorPagarKey])
+        if (savedValor !== null) {
+          totalPagarAllByMembro.set(mid, (totalPagarAllByMembro.get(mid) || 0) + savedValor)
+          return
+        }
+        const rt = revTrimById.get(rtid)
+        if (!rt) return
+        const fallbackValor = toNumberOrNull(rt?.[revistaTrimestreValorKey]) || 0
+        totalPagarAllByMembro.set(mid, (totalPagarAllByMembro.get(mid) || 0) + fallbackValor)
+      })
+
+      const revistasDoTrimestre = new Map()
+      ;(revistasTrimestreCache || []).forEach(r => {
+        if (asId(r?.[revistaTrimestreTrimestreKey]) !== selectedTrimestreId) return
+        const rid = asId(r?.[revistaTrimestreRevistaKey])
+        if (rid) revistasDoTrimestre.set(rid, r)
+      })
+
+      tableRevMembros.innerHTML = ''
+      const thead = document.createElement('thead')
+      const hr = document.createElement('tr')
+      ;['Nome', 'Total A Pagar', 'Revista', 'Valor', 'Pago', 'Entregue'].forEach(t => {
+        const th = document.createElement('th')
+        th.textContent = t
+        if (t === 'Valor') {
+          th.style.width = '110px'
+          th.style.minWidth = '110px'
+        }
+        if (t === 'Pago' || t === 'Entregue') {
+          th.style.width = '74px'
+          th.style.minWidth = '74px'
+          th.style.textAlign = 'center'
+        }
+        hr.appendChild(th)
+      })
+      thead.appendChild(hr)
+      tableRevMembros.appendChild(thead)
+      const tbody = document.createElement('tbody')
+
+      let totalPedido = 0
+      let totalPago = 0
+      const pedidosQtdByRevista = new Map()
+      const membros = (membrosCache || []).slice().sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR', { sensitivity: 'base' }))
+      for (const m of membros) {
+        const mid = asId(m?.id)
+        const rowTrim = membroLinkTrim.get(mid) || null
+        const rowTrimId = asId(rowTrim?.[membroRevistaTrimestreIdKey])
+        const rowRevTrimId = asId(rowTrim?.[membroRevistaTrimestreRevistaTrimKey])
+        const rowRevTrim = rowRevTrimId ? revTrimById.get(rowRevTrimId) : null
+        const selectedRevistaId = asId(rowRevTrim?.[revistaTrimestreRevistaKey])
+        const valorAtual = toNumberOrNull(rowRevTrim?.[revistaTrimestreValorKey]) || 0
+        const pagoAtual = toBool(rowTrim?.[membroRevistaTrimestrePagoKey])
+        const entregueAtual = toBool(rowTrim?.[membroRevistaTrimestreEntregueKey])
+        if (selectedRevistaId) {
+          totalPedido += valorAtual
+          pedidosQtdByRevista.set(selectedRevistaId, (pedidosQtdByRevista.get(selectedRevistaId) || 0) + 1)
+        }
+        if (selectedRevistaId && pagoAtual) totalPago += valorAtual
+
+        const tr = document.createElement('tr')
+        const tdNome = document.createElement('td')
+        tdNome.textContent = String(m?.nome || '')
+        tr.appendChild(tdNome)
+
+        const tdTotal = document.createElement('td')
+        tdTotal.textContent = moneyBr(totalPagarAllByMembro.get(mid) || 0)
+        tr.appendChild(tdTotal)
+
+        const tdRev = document.createElement('td')
+        const selRev = document.createElement('select')
+        const optBlank = document.createElement('option')
+        optBlank.value = ''
+        optBlank.textContent = ''
+        selRev.appendChild(optBlank)
+        ;(revistasCache || []).forEach(rv => {
+          const rid = asId(rv?.[revistaIdKey])
+          if (!rid) return
+          const opt = document.createElement('option')
+          opt.value = rid
+          opt.textContent = String(rv?.[revistaLabelKey] ?? rid)
+          selRev.appendChild(opt)
+        })
+        selRev.value = selectedRevistaId
+        tdRev.appendChild(selRev)
+        tr.appendChild(tdRev)
+
+        const tdValor = document.createElement('td')
+        tdValor.style.width = '110px'
+        tdValor.style.minWidth = '110px'
+        const iValor = document.createElement('input')
+        iValor.type = 'text'
+        iValor.readOnly = true
+        iValor.style.width = '96px'
+        iValor.style.padding = '8px'
+        iValor.style.fontSize = '12px'
+        iValor.value = moneyBr(valorAtual)
+        tdValor.appendChild(iValor)
+        tr.appendChild(tdValor)
+
+        const tdPago = document.createElement('td')
+        tdPago.style.textAlign = 'center'
+        const ckPago = document.createElement('input')
+        ckPago.type = 'checkbox'
+        ckPago.checked = pagoAtual
+        tdPago.appendChild(ckPago)
+        tr.appendChild(tdPago)
+
+        const tdEnt = document.createElement('td')
+        tdEnt.style.textAlign = 'center'
+        const ckEnt = document.createElement('input')
+        ckEnt.type = 'checkbox'
+        ckEnt.checked = entregueAtual
+        tdEnt.appendChild(ckEnt)
+        tr.appendChild(tdEnt)
+
+        async function saveMemberRow() {
+          if (!selectedTrimestreId) return
+          const rid = asId(selRev.value)
+          if (!rid && (ckPago.checked || ckEnt.checked)) {
+            ckPago.checked = false
+            ckEnt.checked = false
+            showStatus('Selecione uma revista para marcar pago/entregue.', 'error')
+            return
+          }
+          if (!rid) {
+            iValor.value = moneyBr(0)
+          }
+          const revTrimId = rid ? await ensureRevistaTrimestre(selectedTrimestreId, rid) : ''
+          const rtNow = rid ? getRevistaTrimestreByTrimAndRev(selectedTrimestreId, rid) : null
+          const valorBase = rtNow ? (toNumberOrNull(rtNow?.[revistaTrimestreValorKey]) || 0) : 0
+          const valorAPagar = rid ? (ckPago.checked ? 0 : valorBase) : null
+          iValor.value = moneyBr(valorBase)
+          await persistMembroRevista(mid, rowTrimId, revTrimId, valorAPagar, ckPago.checked, ckEnt.checked)
+          await refreshRevistas()
+        }
+        selRev.onchange = () => { saveMemberRow().catch(e => showStatus(String(e?.message || e), 'error')) }
+        ckPago.onchange = () => { saveMemberRow().catch(e => showStatus(String(e?.message || e), 'error')) }
+        ckEnt.onchange = () => { saveMemberRow().catch(e => showStatus(String(e?.message || e), 'error')) }
+        tbody.appendChild(tr)
+      }
+
+      const tFoot = document.createElement('tr')
+      tFoot.className = 'ebd-group'
+      const tdTotLabel = document.createElement('td')
+      tdTotLabel.textContent = 'Total'
+      const tdTotPedido = document.createElement('td')
+      tdTotPedido.textContent = moneyBr(totalPedido)
+      const tdEmptyRev = document.createElement('td')
+      tdEmptyRev.textContent = ''
+      const tdTotPago = document.createElement('td')
+      tdTotPago.textContent = moneyBr(totalPago)
+      const tdEmptyPg = document.createElement('td')
+      tdEmptyPg.textContent = ''
+      const tdEmptyEnt = document.createElement('td')
+      tdEmptyEnt.textContent = ''
+      tFoot.appendChild(tdTotLabel)
+      tFoot.appendChild(tdTotPedido)
+      tFoot.appendChild(tdEmptyRev)
+      tFoot.appendChild(tdTotPago)
+      tFoot.appendChild(tdEmptyPg)
+      tFoot.appendChild(tdEmptyEnt)
+      tbody.appendChild(tFoot)
+      tableRevMembros.appendChild(tbody)
+
+      const dif = totalPedido - totalPago
+      resumoMembros.textContent = `Pedido: ${moneyBr(totalPedido)} | Pago: ${moneyBr(totalPago)} | Diferença: ${moneyBr(dif)}`
+
+      tableResumoRev.innerHTML = ''
+      const thead2 = document.createElement('thead')
+      const hr2 = document.createElement('tr')
+      ;['Revista', 'Valor', 'Qtd Pedido', 'Subtotal'].forEach(t => {
+        const th = document.createElement('th')
+        th.textContent = t
+        hr2.appendChild(th)
+      })
+      thead2.appendChild(hr2)
+      tableResumoRev.appendChild(thead2)
+      const tbody2 = document.createElement('tbody')
+
+      let totalQtd = 0
+      let totalGeral = 0
+      for (const rv of (revistasCache || [])) {
+        const rid = asId(rv?.[revistaIdKey])
+        if (!rid) continue
+        const rt = revistasDoTrimestre.get(rid) || null
+        const valor = toNumberOrNull(rt?.[revistaTrimestreValorKey]) || 0
+        const qde = pedidosQtdByRevista.get(rid) || 0
+        const subtotal = valor * qde
+        totalQtd += qde
+        totalGeral += subtotal
+
+        const tr = document.createElement('tr')
+        const tdNome = document.createElement('td')
+        tdNome.textContent = String(rv?.[revistaLabelKey] ?? rid)
+        const tdValor2 = document.createElement('td')
+        const iValor2 = document.createElement('input')
+        iValor2.type = 'number'
+        iValor2.step = '0.01'
+        iValor2.inputMode = 'decimal'
+        iValor2.value = String(valor || '')
+        tdValor2.appendChild(iValor2)
+        const tdQde = document.createElement('td')
+        const iQde = document.createElement('input')
+        iQde.type = 'number'
+        iQde.step = '1'
+        iQde.inputMode = 'numeric'
+        iQde.readOnly = true
+        iQde.value = String(qde)
+        tdQde.appendChild(iQde)
+        const tdSub = document.createElement('td')
+        tdSub.textContent = moneyBr(subtotal)
+
+        const saveResumo = async () => {
+          const novoValor = parseDecimal(iValor2.value)
+          await persistRevistaResumoRow(rid, novoValor === null ? 0 : novoValor, qde)
+          await refreshRevistas()
+        }
+        iValor2.onblur = () => { saveResumo().catch(e => showStatus(String(e?.message || e), 'error')) }
+        const qdeAtualDb = toIntOrNull(rt?.[revistaTrimestreQdeKey]) || 0
+        if (rt && qdeAtualDb !== qde) {
+          persistRevistaResumoRow(rid, valor, qde).catch(e => showStatus(String(e?.message || e), 'error'))
+        }
+
+        tr.appendChild(tdNome)
+        tr.appendChild(tdValor2)
+        tr.appendChild(tdQde)
+        tr.appendChild(tdSub)
+        tbody2.appendChild(tr)
+      }
+
+      const trTotal = document.createElement('tr')
+      trTotal.className = 'ebd-group'
+      const tdTL = document.createElement('td')
+      tdTL.textContent = 'Total Geral'
+      const tdTV = document.createElement('td')
+      tdTV.textContent = ''
+      const tdTQ = document.createElement('td')
+      tdTQ.textContent = String(totalQtd)
+      const tdTG = document.createElement('td')
+      tdTG.textContent = moneyBr(totalGeral)
+      trTotal.appendChild(tdTL)
+      trTotal.appendChild(tdTV)
+      trTotal.appendChild(tdTQ)
+      trTotal.appendChild(tdTG)
+      tbody2.appendChild(trTotal)
+      tableResumoRev.appendChild(tbody2)
+    } finally {
+      revistasLoading = false
+      selTrim.disabled = false
+    }
+  }
+  selTrim.onchange = () => {
+    selectedTrimestreId = asId(selTrim.value)
+    refreshRevistas().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
+
+  function setActiveFreq() { btnFreq.classList.add('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); panelFreq.style.display=''; panelRel.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none' }
+  function setActiveRel() { btnRel.classList.add('active'); btnFreq.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); panelRel.style.display=''; panelFreq.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none'; refreshReports() }
+  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnRevistas.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelRevistas.style.display='none' }
+  function setActiveRevistas() { btnRevistas.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); panelRevistas.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelCaixa.style.display='none'; refreshRevistas().catch(e => showStatus(String(e?.message || e), 'error')) }
   btnFreq.onclick = setActiveFreq
   btnRel.onclick = setActiveRel
   btnCaixa.onclick = setActiveCaixa
+  btnRevistas.onclick = setActiveRevistas
 }
 
 function renderCirculoOracaoScreen(schema, table) {

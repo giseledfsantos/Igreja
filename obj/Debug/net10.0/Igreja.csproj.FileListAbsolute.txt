@@ -65,7 +65,6 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\refint\Ig
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.pdb
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.genruntimeconfig.cache
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\ref\Igreja.dll
-c:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-gft2azajrj-gft2azajrj.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\bin\Debug\net10.0\Newtonsoft.Json.dll
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\bin\Debug\net10.0\BouncyCastle.Crypto.dll
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\bin\Debug\net10.0\WebPush.dll
@@ -73,7 +72,6 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.cs
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\mfiwmtsi9n-{0}-r67x8rfaq6-r67x8rfaq6.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.csproj.Up2Date
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-quayl7tug8-quayl7tug8.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-ujsfb7esoo-ujsfb7esoo.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\l2yt544cry-{0}-k7swktmxgk-k7swktmxgk.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-eks31vidqz-eks31vidqz.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-ktb2df62sq-ktb2df62sq.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-8m6v4bszwo-8m6v4bszwo.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-b1nxirxz70-b1nxirxz70.gz
