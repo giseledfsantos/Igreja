@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Igreja")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8f5035197500deaf6d072ee7863f17894ba04b6a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+99c8bb4a002e8a17f9d8c5f27aede786ec8894bf")]
 [assembly: System.Reflection.AssemblyProductAttribute("Igreja")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Igreja")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

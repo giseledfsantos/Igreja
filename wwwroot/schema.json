@@ -14,6 +14,7 @@
         { "key": "congregacao_id", "label": "Congregação", "type": "select", "source": { "table": "congregacoes", "value": "id", "label": "nome" } },
         { "key": "matricula", "label": "Matrícula", "type": "text" },
         { "key": "nome", "label": "Nome", "type": "text", "required": true },
+        { "key": "id_resp_fin", "label": "Responsável Financeiro", "type": "select", "emptyOption": true, "emptyLabel": "", "sourceSort": "alpha", "source": { "table": "membros", "value": "id", "label": "nome" } },
         { "key": "sexo", "label": "Sexo", "type": "select", "options": ["Masculino","Feminino"] },
         { "key": "estado_civil", "label": "Estado Civil", "type": "select", "source": { "table": "estado_civil", "value": "id", "label": "estado_civil" } },
         { "key": "data_nascimento", "label": "Data de Nascimento", "type": "date" },

@@ -784,6 +784,12 @@ function renderField(field, value = '') {
   } else if (field.type === 'select') {
     input = document.createElement('select')
     input.dataset.initialValue = String(value ?? '')
+    if (field.emptyOption) {
+      const o0 = document.createElement('option')
+      o0.value = ''
+      o0.textContent = String(field.emptyLabel ?? '')
+      input.appendChild(o0)
+    }
     const opts = field.options
     if (Array.isArray(opts) && opts.length) {
       opts.forEach(opt => {
@@ -795,10 +801,15 @@ function renderField(field, value = '') {
       })
     } else if (field.source && field.source.table && field.source.value && field.source.label) {
       apiList(field.source.table).then(rows => {
-        rows.forEach(r => {
+        const list = (Array.isArray(rows) ? rows : []).map(r => ({
+          val: String(r?.[field.source.value] ?? ''),
+          lab: String(r?.[field.source.label] ?? '')
+        })).filter(x => x.val !== '')
+        if (field.sourceSort === 'alpha') {
+          list.sort((a, b) => String(a.lab).localeCompare(String(b.lab), 'pt-BR', { sensitivity: 'base' }))
+        }
+        list.forEach(({ val, lab }) => {
           const o = document.createElement('option')
-          const val = String(r[field.source.value])
-          const lab = String(r[field.source.label])
           o.value = val
           o.textContent = lab
           if (String(value) === val) o.selected = true
@@ -2852,23 +2863,30 @@ function renderEbdScreen(schema, table) {
   const btnRevistas = document.createElement('button')
   btnRevistas.className = 'subtab'
   btnRevistas.textContent = 'Revistas'
+  const btnReceber = document.createElement('button')
+  btnReceber.className = 'subtab'
+  btnReceber.textContent = 'A Receber'
   subtabs.appendChild(btnFreq)
   subtabs.appendChild(btnRel)
   subtabs.appendChild(btnCaixa)
   subtabs.appendChild(btnRevistas)
+  subtabs.appendChild(btnReceber)
   screens.appendChild(subtabs)
 
   const panelFreq = document.createElement('div')
   const panelRel = document.createElement('div')
   const panelCaixa = document.createElement('div')
   const panelRevistas = document.createElement('div')
+  const panelReceber = document.createElement('div')
   panelRel.style.display = 'none'
   panelCaixa.style.display = 'none'
   panelRevistas.style.display = 'none'
+  panelReceber.style.display = 'none'
   screens.appendChild(panelFreq)
   screens.appendChild(panelRel)
   screens.appendChild(panelCaixa)
   screens.appendChild(panelRevistas)
+  screens.appendChild(panelReceber)
 
   const card = document.createElement('section')
   card.className = 'card'
@@ -3495,14 +3513,30 @@ function renderEbdScreen(schema, table) {
     showStatus('Carregando...', 'success')
     let membros = []
     try {
-      const rows = await apiGet('membros', { select: 'id,nome' })
+      const rows = await apiGet('membros', { select: 'id,nome,id_resp_fin' })
       membros = (Array.isArray(rows) ? rows : [])
-        .map(r => ({ id: String(r?.id ?? '').trim(), nome: String(r?.nome ?? '').trim() }))
+        .map(r => ({
+          id: String(r?.id ?? '').trim(),
+          nome: String(r?.nome ?? '').trim(),
+          id_resp_fin: (r?.id_resp_fin === null || r?.id_resp_fin === undefined) ? '' : String(r?.id_resp_fin ?? '').trim()
+        }))
         .filter(x => x.id && x.nome)
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
     } catch (e) {
-      showStatus(String(e?.message || e), 'error')
-      membros = []
+      try {
+        const rows = await apiGet('membros', { select: 'id,nome' })
+        membros = (Array.isArray(rows) ? rows : [])
+          .map(r => ({
+            id: String(r?.id ?? '').trim(),
+            nome: String(r?.nome ?? '').trim(),
+            id_resp_fin: ''
+          }))
+          .filter(x => x.id && x.nome)
+          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+      } catch (e2) {
+        showStatus(String(e2?.message || e2), 'error')
+        membros = []
+      }
     }
     membrosCache = membros
 
@@ -3941,6 +3975,93 @@ function renderEbdScreen(schema, table) {
   cardResumoRev.appendChild(resumoRevWrap)
   panelRevistas.appendChild(cardResumoRev)
 
+  const cardReceber = document.createElement('section')
+  cardReceber.className = 'card'
+  const hReceber = document.createElement('h2')
+  hReceber.textContent = 'A Receber'
+  cardReceber.appendChild(hReceber)
+  const receberWrap = document.createElement('div')
+  receberWrap.className = 'ebd-wrap'
+  const tableReceber = document.createElement('table')
+  tableReceber.className = 'ebd-table'
+  receberWrap.appendChild(tableReceber)
+  cardReceber.appendChild(receberWrap)
+  panelReceber.appendChild(cardReceber)
+
+  let __receberDetalhesModalEls = null
+  function showReceberDetalhesModal({ title, lines } = {}) {
+    if (!__receberDetalhesModalEls) {
+      const backdrop = document.createElement('div')
+      backdrop.className = 'modal-backdrop'
+      backdrop.setAttribute('role', 'presentation')
+      const dialog = document.createElement('div')
+      dialog.className = 'modal'
+      dialog.setAttribute('role', 'dialog')
+      dialog.setAttribute('aria-modal', 'true')
+
+      const h = document.createElement('h3')
+      h.className = 'modal-title'
+      const body = document.createElement('div')
+      body.className = 'modal-message'
+      const actions = document.createElement('div')
+      actions.className = 'modal-actions'
+      const btnClose = document.createElement('button')
+      btnClose.type = 'button'
+      btnClose.textContent = 'Fechar'
+      actions.appendChild(btnClose)
+      dialog.appendChild(h)
+      dialog.appendChild(body)
+      dialog.appendChild(actions)
+      backdrop.appendChild(dialog)
+      document.body.appendChild(backdrop)
+
+      const close = () => {
+        const els = __receberDetalhesModalEls
+        if (!els) return
+        els.backdrop.classList.remove('open')
+        if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+        els.keyHandler = null
+      }
+
+      btnClose.onclick = close
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) close() }
+
+      __receberDetalhesModalEls = { backdrop, h, body, btnClose, keyHandler: null }
+    }
+
+    const els = __receberDetalhesModalEls
+    els.h.textContent = String(title ?? '')
+    els.body.innerHTML = ''
+
+    const arr = Array.isArray(lines) ? lines : []
+    if (!arr.length) {
+      els.body.textContent = 'Sem itens.'
+    } else {
+      const wrap = document.createElement('div')
+      wrap.style.display = 'grid'
+      wrap.style.gap = '6px'
+      arr.forEach(t => {
+        const row = document.createElement('div')
+        row.textContent = String(t ?? '')
+        wrap.appendChild(row)
+      })
+      els.body.appendChild(wrap)
+    }
+
+    els.backdrop.classList.add('open')
+    els.btnClose.focus()
+    if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+    els.keyHandler = (ev) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault()
+        els.backdrop.classList.remove('open')
+        if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+        els.keyHandler = null
+      }
+    }
+    window.addEventListener('keydown', els.keyHandler)
+  }
+
   let selectedTrimestreId = ''
   let revistasLoading = false
   function asId(v) { return String(v ?? '').trim() }
@@ -4123,22 +4244,6 @@ function renderEbdScreen(schema, table) {
         }
       })
 
-      const totalPagarAllByMembro = new Map()
-      ;(membrosRevistaTrimestreCache || []).forEach(r => {
-        const mid = asId(r?.[membroRevistaTrimestreMembroKey])
-        const rtid = asId(r?.[membroRevistaTrimestreRevistaTrimKey])
-        if (!mid || !rtid) return
-        const savedValor = toNumberOrNull(r?.[membroRevistaTrimestreValorPagarKey])
-        if (savedValor !== null) {
-          totalPagarAllByMembro.set(mid, (totalPagarAllByMembro.get(mid) || 0) + savedValor)
-          return
-        }
-        const rt = revTrimById.get(rtid)
-        if (!rt) return
-        const fallbackValor = toNumberOrNull(rt?.[revistaTrimestreValorKey]) || 0
-        totalPagarAllByMembro.set(mid, (totalPagarAllByMembro.get(mid) || 0) + fallbackValor)
-      })
-
       const revistasDoTrimestre = new Map()
       ;(revistasTrimestreCache || []).forEach(r => {
         if (asId(r?.[revistaTrimestreTrimestreKey]) !== selectedTrimestreId) return
@@ -4185,6 +4290,8 @@ function renderEbdScreen(schema, table) {
         const valorAtual = toNumberOrNull(rowRevTrim?.[revistaTrimestreValorKey]) || 0
         const pagoAtual = toBool(rowTrim?.[membroRevistaTrimestrePagoKey])
         const entregueAtual = toBool(rowTrim?.[membroRevistaTrimestreEntregueKey])
+        const savedValorPagar = toNumberOrNull(rowTrim?.[membroRevistaTrimestreValorPagarKey])
+        const valorPagarTrim = selectedRevistaId ? (savedValorPagar !== null ? savedValorPagar : (pagoAtual ? 0 : valorAtual)) : 0
         if (selectedRevistaId) {
           totalPedido += valorAtual
           pedidosQtdByRevista.set(selectedRevistaId, (pedidosQtdByRevista.get(selectedRevistaId) || 0) + 1)
@@ -4201,7 +4308,7 @@ function renderEbdScreen(schema, table) {
         tdTotal.style.minWidth = '110px'
         tdTotal.style.whiteSpace = 'nowrap'
         tdTotal.style.color = 'var(--danger)'
-        tdTotal.textContent = moneyBr(totalPagarAllByMembro.get(mid) || 0)
+        tdTotal.textContent = moneyBr(valorPagarTrim || 0)
         tr.appendChild(tdTotal)
 
         const tdRev = document.createElement('td')
@@ -4387,19 +4494,155 @@ function renderEbdScreen(schema, table) {
       selTrim.disabled = false
     }
   }
+
+  async function refreshReceber() {
+    tableReceber.innerHTML = ''
+    try {
+      await loadTrimestresOptions()
+      await loadRevistasData()
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+      return
+    }
+
+    const trimLabelById = new Map()
+    ;(trimestresCache || []).forEach(t => {
+      const id = asId(t?.[trimestreIdKey])
+      if (!id) return
+      const label = String(t?.[trimestreLabelKey] ?? id).trim()
+      trimLabelById.set(id, label || id)
+    })
+
+    const revTrimById = new Map()
+    ;(revistasTrimestreCache || []).forEach(r => {
+      const id = asId(r?.[revistaTrimestreIdKey])
+      if (!id) return
+      revTrimById.set(id, r)
+    })
+
+    let rows = []
+    try {
+      const res = await apiGet(EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE, {
+        select: `${membroRevistaTrimestreMembroKey},${membroRevistaTrimestreRevistaTrimKey},${membroRevistaTrimestreValorPagarKey}`,
+        [membroRevistaTrimestreValorPagarKey]: 'gt.0'
+      })
+      rows = Array.isArray(res) ? res : []
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+      return
+    }
+
+    const memberById = new Map()
+    ;(Array.isArray(membrosCache) ? membrosCache : []).forEach(m => {
+      const id = String(m?.id ?? '').trim()
+      if (!id) return
+      memberById.set(id, {
+        id,
+        nome: String(m?.nome ?? '').trim(),
+        id_resp_fin: String(m?.id_resp_fin ?? '').trim()
+      })
+    })
+
+    const groupTotal = new Map()
+    rows.forEach(r => {
+      const midVal = firstExistingValue(r, MEMBRO_KEYS)
+      const mid = midVal === null ? '' : String(midVal).trim()
+      if (!mid) return
+      const v = toNumberOrNull(r?.[membroRevistaTrimestreValorPagarKey]) || 0
+      if (!(v > 0)) return
+      const m = memberById.get(mid) || { id: mid, nome: '', id_resp_fin: '' }
+      const respId = m.id_resp_fin ? String(m.id_resp_fin).trim() : mid
+      groupTotal.set(respId, (groupTotal.get(respId) || 0) + v)
+    })
+
+    const detailsByRespId = new Map()
+    rows.forEach(r => {
+      const midVal = firstExistingValue(r, MEMBRO_KEYS)
+      const mid = midVal === null ? '' : String(midVal).trim()
+      if (!mid) return
+      const valor = toNumberOrNull(r?.[membroRevistaTrimestreValorPagarKey]) || 0
+      if (!(valor > 0)) return
+
+      const m = memberById.get(mid) || { id: mid, nome: mid, id_resp_fin: '' }
+      const respId = m.id_resp_fin ? String(m.id_resp_fin).trim() : mid
+
+      const rtid = asId(r?.[membroRevistaTrimestreRevistaTrimKey])
+      const rtRow = rtid ? (revTrimById.get(rtid) || null) : null
+      const trimId = asId(rtRow?.[revistaTrimestreTrimestreKey])
+      const trimLabel = trimId ? (trimLabelById.get(trimId) || trimId) : ''
+
+      const line = `${String(m.nome || mid)} - ${trimLabel || trimId || 'Trimestre'} - ${moneyBr(valor)}`
+      if (!detailsByRespId.has(respId)) detailsByRespId.set(respId, [])
+      detailsByRespId.get(respId).push({ membro: String(m.nome || mid), trim: String(trimLabel || trimId || ''), valor, line })
+    })
+
+    detailsByRespId.forEach((arr, respId) => {
+      arr.sort((a, b) => {
+        const r = String(a.membro).localeCompare(String(b.membro), 'pt-BR', { sensitivity: 'base' })
+        if (r !== 0) return r
+        return String(a.trim).localeCompare(String(b.trim), 'pt-BR', { sensitivity: 'base' })
+      })
+      detailsByRespId.set(respId, arr)
+    })
+
+    const groups = Array.from(groupTotal.entries())
+      .map(([respId, total]) => {
+        const resp = memberById.get(respId) || { id: respId, nome: respId, id_resp_fin: '' }
+        return { responsavelId: respId, responsavelNome: String(resp.nome || respId), valor: total }
+      })
+      .filter(x => (x.valor || 0) > 0)
+      .sort((a, b) => {
+        const r = String(a.responsavelNome).localeCompare(String(b.responsavelNome), 'pt-BR', { sensitivity: 'base' })
+        if (r !== 0) return r
+        return String(a.responsavelId).localeCompare(String(b.responsavelId), 'pt-BR', { sensitivity: 'base' })
+      })
+
+    const thead = document.createElement('thead')
+    const hr = document.createElement('tr')
+    const thR = document.createElement('th'); thR.textContent = ''
+    thR.style.textAlign = 'left'
+    const thV = document.createElement('th'); thV.textContent = 'VALOR'
+    hr.appendChild(thR)
+    hr.appendChild(thV)
+    thead.appendChild(hr)
+    tableReceber.appendChild(thead)
+
+    const tbody = document.createElement('tbody')
+    groups.forEach(x => {
+      const tr = document.createElement('tr')
+      const tdR = document.createElement('td'); tdR.textContent = x.responsavelNome
+      tdR.style.textAlign = 'left'
+      tdR.style.cursor = 'pointer'
+      tdR.style.textDecoration = 'underline'
+      tdR.onclick = (ev) => {
+        try { ev?.stopPropagation?.() } catch {}
+        const rid = String(x.responsavelId ?? '').trim()
+        const arr = detailsByRespId.get(rid) || []
+        showReceberDetalhesModal({ title: `Responsável: ${x.responsavelNome}`, lines: arr.map(a => a.line) })
+      }
+      tr.appendChild(tdR)
+      const tdV = document.createElement('td'); tdV.textContent = moneyBr(x.valor)
+      tr.appendChild(tdV)
+      tbody.appendChild(tr)
+    })
+    tableReceber.appendChild(tbody)
+    applyHeaderOffsetForTable(tableReceber)
+  }
   selTrim.onchange = () => {
     selectedTrimestreId = asId(selTrim.value)
     refreshRevistas().catch(e => showStatus(String(e?.message || e), 'error'))
   }
 
-  function setActiveFreq() { btnFreq.classList.add('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); panelFreq.style.display=''; panelRel.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none' }
-  function setActiveRel() { btnRel.classList.add('active'); btnFreq.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); panelRel.style.display=''; panelFreq.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none'; refreshReports() }
-  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnRevistas.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelRevistas.style.display='none' }
-  function setActiveRevistas() { btnRevistas.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); panelRevistas.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelCaixa.style.display='none'; refreshRevistas().catch(e => showStatus(String(e?.message || e), 'error')) }
+  function setActiveFreq() { btnFreq.classList.add('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); btnReceber.classList.remove('active'); panelFreq.style.display=''; panelRel.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none'; panelReceber.style.display='none' }
+  function setActiveRel() { btnRel.classList.add('active'); btnFreq.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); btnReceber.classList.remove('active'); panelRel.style.display=''; panelFreq.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none'; panelReceber.style.display='none'; refreshReports() }
+  function setActiveCaixa() { btnCaixa.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnRevistas.classList.remove('active'); btnReceber.classList.remove('active'); panelCaixa.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelRevistas.style.display='none'; panelReceber.style.display='none' }
+  function setActiveRevistas() { btnRevistas.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); btnReceber.classList.remove('active'); panelRevistas.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelCaixa.style.display='none'; panelReceber.style.display='none'; refreshRevistas().catch(e => showStatus(String(e?.message || e), 'error')) }
+  function setActiveReceber() { btnReceber.classList.add('active'); btnFreq.classList.remove('active'); btnRel.classList.remove('active'); btnCaixa.classList.remove('active'); btnRevistas.classList.remove('active'); panelReceber.style.display=''; panelFreq.style.display='none'; panelRel.style.display='none'; panelCaixa.style.display='none'; panelRevistas.style.display='none'; refreshReceber().catch(e => showStatus(String(e?.message || e), 'error')) }
   btnFreq.onclick = setActiveFreq
   btnRel.onclick = setActiveRel
   btnCaixa.onclick = setActiveCaixa
   btnRevistas.onclick = setActiveRevistas
+  btnReceber.onclick = setActiveReceber
 }
 
 function renderCirculoOracaoScreen(schema, table) {

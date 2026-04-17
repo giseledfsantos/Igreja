@@ -54,7 +54,6 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\rjimswa.d
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\rjsmrazor.dswa.cache.json
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\rjsmcshtml.dswa.cache.json
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\scopedcss\bundle\Igreja.styles.css
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\jh633y69c6-{0}-9sb9w2ua5p-9sb9w2ua5p.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\staticwebassets.build.json
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\staticwebassets.build.json.cache
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\staticwebassets.development.json
@@ -74,4 +73,5 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.cs
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-quayl7tug8-quayl7tug8.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\l2yt544cry-{0}-k7swktmxgk-k7swktmxgk.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-8m6v4bszwo-8m6v4bszwo.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-vybse0fg9m-vybse0fg9m.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-g3jggkl2hj-g3jggkl2hj.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\jh633y69c6-{0}-gzbrthv7k1-gzbrthv7k1.gz
