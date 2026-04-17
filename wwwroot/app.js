@@ -4151,7 +4151,11 @@ function renderEbdScreen(schema, table) {
       const hr = document.createElement('tr')
       ;['Nome', 'Total A Pagar', 'Revista', 'Valor', 'Pago', 'Entregue'].forEach(t => {
         const th = document.createElement('th')
-        th.textContent = t
+        th.textContent = t === 'Total A Pagar' ? '' : t
+        if (t === 'Total A Pagar') {
+          th.style.width = '120px'
+          th.style.minWidth = '110px'
+        }
         if (t === 'Valor') {
           th.style.width = '110px'
           th.style.minWidth = '110px'
@@ -4193,6 +4197,10 @@ function renderEbdScreen(schema, table) {
         tr.appendChild(tdNome)
 
         const tdTotal = document.createElement('td')
+        tdTotal.style.width = '120px'
+        tdTotal.style.minWidth = '110px'
+        tdTotal.style.whiteSpace = 'nowrap'
+        tdTotal.style.color = 'var(--danger)'
         tdTotal.textContent = moneyBr(totalPagarAllByMembro.get(mid) || 0)
         tr.appendChild(tdTotal)
 
