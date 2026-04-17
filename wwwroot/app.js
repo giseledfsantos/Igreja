@@ -4324,10 +4324,10 @@ function renderEbdScreen(schema, table) {
         tdNome.textContent = String(rv?.[revistaLabelKey] ?? rid)
         const tdValor2 = document.createElement('td')
         const iValor2 = document.createElement('input')
-        iValor2.type = 'number'
-        iValor2.step = '0.01'
+        iValor2.type = 'text'
         iValor2.inputMode = 'decimal'
-        iValor2.value = String(valor || '')
+        iValor2.placeholder = '0,00'
+        iValor2.value = Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         tdValor2.appendChild(iValor2)
         const tdQde = document.createElement('td')
         const iQde = document.createElement('input')
