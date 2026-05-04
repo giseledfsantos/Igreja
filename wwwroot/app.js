@@ -4719,8 +4719,36 @@ function renderEbdScreen(schema, table) {
       tdR.onclick = (ev) => {
         try { ev?.stopPropagation?.() } catch {}
         const rid = String(x.responsavelId ?? '').trim()
+        if (!rid) return
+        const next = tr.nextSibling
+        if (next && next.dataset && next.dataset.receberDetailsFor === rid) {
+          next.remove()
+          return
+        }
         const arr = detailsByRespId.get(rid) || []
-        showReceberDetalhesModal({ title: `Responsável: ${x.responsavelNome}`, lines: arr.map(a => a.line) })
+        const dtr = document.createElement('tr')
+        dtr.dataset.receberDetailsFor = rid
+        const dtd = document.createElement('td')
+        dtd.colSpan = 2
+        dtd.style.textAlign = 'left'
+        dtd.style.padding = '10px'
+        dtd.style.background = '#0f172a'
+        dtd.style.borderTop = '0'
+        if (!arr.length) {
+          dtd.textContent = 'Sem itens.'
+        } else {
+          const wrap = document.createElement('div')
+          wrap.style.display = 'grid'
+          wrap.style.gap = '6px'
+          arr.forEach(a => {
+            const row = document.createElement('div')
+            row.textContent = String(a?.line ?? '')
+            wrap.appendChild(row)
+          })
+          dtd.appendChild(wrap)
+        }
+        dtr.appendChild(dtd)
+        tr.insertAdjacentElement('afterend', dtr)
       }
       tr.appendChild(tdR)
       const tdV = document.createElement('td'); tdV.textContent = moneyBr(x.valor)
