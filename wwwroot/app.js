@@ -3950,6 +3950,70 @@ function renderEbdScreen(schema, table) {
   fTrim.appendChild(selTrim)
   cardRevistas.appendChild(fTrim)
 
+  const formRevistas = document.createElement('div')
+  const formRevistasRow1 = document.createElement('div')
+  formRevistasRow1.style.display = 'flex'
+  formRevistasRow1.style.gap = '12px'
+  formRevistasRow1.style.flexWrap = 'wrap'
+  formRevistasRow1.style.alignItems = 'flex-end'
+  const fRMembro = document.createElement('div'); fRMembro.className = 'field'
+  const lRMembro = document.createElement('label'); lRMembro.textContent = 'Membro'
+  const selRMembro = document.createElement('select')
+  fRMembro.appendChild(lRMembro); fRMembro.appendChild(selRMembro)
+
+  const fRRevista = document.createElement('div'); fRRevista.className = 'field'
+  const lRRevista = document.createElement('label'); lRRevista.textContent = 'Revista'
+  const selRRevista = document.createElement('select')
+  fRRevista.appendChild(lRRevista); fRRevista.appendChild(selRRevista)
+
+  const fRValor = document.createElement('div'); fRValor.className = 'field'
+  const lRValor = document.createElement('label'); lRValor.textContent = 'Valor'
+  const iRValor = document.createElement('input')
+  iRValor.type = 'text'
+  iRValor.readOnly = true
+  iRValor.style.width = '120px'
+  fRValor.appendChild(lRValor); fRValor.appendChild(iRValor)
+
+  const fRPago = document.createElement('div'); fRPago.className = 'field'
+  fRPago.style.alignItems = 'center'
+  const lRPago = document.createElement('label'); lRPago.textContent = 'Pago'
+  lRPago.style.textAlign = 'center'
+  lRPago.style.width = '100%'
+  const ckRPago = document.createElement('input')
+  ckRPago.type = 'checkbox'
+  fRPago.appendChild(lRPago); fRPago.appendChild(ckRPago)
+
+  const fREnt = document.createElement('div'); fREnt.className = 'field'
+  fREnt.style.alignItems = 'center'
+  const lREnt = document.createElement('label'); lREnt.textContent = 'Entregue'
+  lREnt.style.textAlign = 'center'
+  lREnt.style.width = '100%'
+  const ckREnt = document.createElement('input')
+  ckREnt.type = 'checkbox'
+  fREnt.appendChild(lREnt); fREnt.appendChild(ckREnt)
+
+  const actionsRevistas = document.createElement('div'); actionsRevistas.className = 'actions'
+  actionsRevistas.style.marginLeft = 'auto'
+  actionsRevistas.style.marginBottom = '10px'
+  actionsRevistas.style.justifyContent = 'flex-end'
+  actionsRevistas.style.alignSelf = 'flex-end'
+  const btnSalvarRevistaMembro = document.createElement('button')
+  btnSalvarRevistaMembro.type = 'button'
+  btnSalvarRevistaMembro.className = 'icon-btn'
+  btnSalvarRevistaMembro.title = 'Salvar'
+  btnSalvarRevistaMembro.setAttribute('aria-label', 'Salvar')
+  setButtonIcon(btnSalvarRevistaMembro, 'save')
+  actionsRevistas.appendChild(btnSalvarRevistaMembro)
+
+  formRevistasRow1.appendChild(fRMembro)
+  formRevistasRow1.appendChild(fRRevista)
+  formRevistasRow1.appendChild(fRValor)
+  formRevistasRow1.appendChild(fRPago)
+  formRevistasRow1.appendChild(fREnt)
+  formRevistasRow1.appendChild(actionsRevistas)
+  formRevistas.appendChild(formRevistasRow1)
+  cardRevistas.appendChild(formRevistas)
+
   const listRevWrap = document.createElement('div')
   listRevWrap.className = 'ebd-wrap'
   const tableRevMembros = document.createElement('table')
@@ -4064,6 +4128,7 @@ function renderEbdScreen(schema, table) {
 
   let selectedTrimestreId = ''
   let revistasLoading = false
+  let editMembroRevistaRowId = ''
   function asId(v) { return String(v ?? '').trim() }
   function toNumberOrNull(v) {
     const n = Number(v)
@@ -4226,7 +4291,6 @@ function renderEbdScreen(schema, table) {
       const revTrimById = new Map()
       ;(revistasTrimestreCache || []).forEach(r => revTrimById.set(asId(r?.[revistaTrimestreIdKey]), r))
 
-      const membroLinkAll = new Map()
       const membroLinkTrim = new Map()
       ;(membrosRevistaTrimestreCache || []).forEach(r => {
         const rowId = asId(r?.[membroRevistaTrimestreIdKey])
@@ -4236,8 +4300,6 @@ function renderEbdScreen(schema, table) {
         const rt = revTrimById.get(rtid)
         if (!rt) return
         const trimId = asId(rt?.[revistaTrimestreTrimestreKey])
-        const existingAll = membroLinkAll.get(mid)
-        if (!existingAll || Number(rowId || 0) > Number(asId(existingAll?.[membroRevistaTrimestreIdKey]) || 0)) membroLinkAll.set(mid, r)
         if (trimId === selectedTrimestreId) {
           const existingTrim = membroLinkTrim.get(mid)
           if (!existingTrim || Number(rowId || 0) > Number(asId(existingTrim?.[membroRevistaTrimestreIdKey]) || 0)) membroLinkTrim.set(mid, r)
@@ -4251,24 +4313,125 @@ function renderEbdScreen(schema, table) {
         if (rid) revistasDoTrimestre.set(rid, r)
       })
 
+      const membrosSorted = (membrosCache || []).slice().sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR', { sensitivity: 'base' }))
+      selRMembro.innerHTML = ''
+      const optM0 = document.createElement('option'); optM0.value = ''; optM0.textContent = 'Selecione'
+      selRMembro.appendChild(optM0)
+      membrosSorted.forEach(m => {
+        const mid = asId(m?.id)
+        if (!mid) return
+        const o = document.createElement('option')
+        o.value = mid
+        o.textContent = String(m?.nome || mid)
+        selRMembro.appendChild(o)
+      })
+
+      const revistasSorted = (revistasCache || []).slice().sort((a, b) => String(a?.[revistaLabelKey] || '').localeCompare(String(b?.[revistaLabelKey] || ''), 'pt-BR', { sensitivity: 'base' }))
+      selRRevista.innerHTML = ''
+      const optR0 = document.createElement('option'); optR0.value = ''; optR0.textContent = 'Selecione'
+      selRRevista.appendChild(optR0)
+      revistasSorted.forEach(rv => {
+        const rid = asId(rv?.[revistaIdKey])
+        if (!rid) return
+        const o = document.createElement('option')
+        o.value = rid
+        o.textContent = String(rv?.[revistaLabelKey] ?? rid)
+        selRRevista.appendChild(o)
+      })
+
+      function updateValorForm() {
+        const rid = asId(selRRevista.value)
+        if (!selectedTrimestreId || !rid) {
+          iRValor.value = moneyBr(0)
+          return
+        }
+        const rt = getRevistaTrimestreByTrimAndRev(selectedTrimestreId, rid)
+        const valor = toNumberOrNull(rt?.[revistaTrimestreValorKey]) || 0
+        iRValor.value = moneyBr(valor)
+      }
+      selRRevista.onchange = updateValorForm
+
+      btnSalvarRevistaMembro.onclick = async () => {
+        const mid = asId(selRMembro.value)
+        const rid = asId(selRRevista.value)
+        if (!selectedTrimestreId) {
+          showStatus('Selecione um trimestre.', 'error')
+          return
+        }
+        if (!mid) {
+          showStatus('Selecione um membro.', 'error')
+          return
+        }
+        if (!rid) {
+          showStatus('Selecione uma revista.', 'error')
+          return
+        }
+        try {
+          const revTrimId = await ensureRevistaTrimestre(selectedTrimestreId, rid)
+          const rtNow = getRevistaTrimestreByTrimAndRev(selectedTrimestreId, rid)
+          const valorBase = rtNow ? (toNumberOrNull(rtNow?.[revistaTrimestreValorKey]) || 0) : 0
+          const valorAPagar = ckRPago.checked ? 0 : valorBase
+          iRValor.value = moneyBr(valorBase)
+          await persistMembroRevista(mid, editMembroRevistaRowId, revTrimId, valorAPagar, ckRPago.checked, ckREnt.checked)
+          showStatus('Salvo.', 'success')
+          editMembroRevistaRowId = ''
+          selRMembro.value = ''
+          selRRevista.value = ''
+          ckRPago.checked = false
+          ckREnt.checked = false
+          updateValorForm()
+          await refreshRevistas()
+        } catch (e) {
+          showStatus(String(e?.message || e), 'error')
+        }
+      }
+
+      updateValorForm()
+
+      const lancamentos = []
+      membroLinkTrim.forEach((rowTrim, mid) => {
+        const rowTrimId = asId(rowTrim?.[membroRevistaTrimestreIdKey])
+        const rowRevTrimId = asId(rowTrim?.[membroRevistaTrimestreRevistaTrimKey])
+        const rowRevTrim = rowRevTrimId ? revTrimById.get(rowRevTrimId) : null
+        const selectedRevistaId = asId(rowRevTrim?.[revistaTrimestreRevistaKey])
+        if (!selectedRevistaId) return
+        const valorAtual = toNumberOrNull(rowRevTrim?.[revistaTrimestreValorKey]) || 0
+        const pagoAtual = toBool(rowTrim?.[membroRevistaTrimestrePagoKey])
+        const entregueAtual = toBool(rowTrim?.[membroRevistaTrimestreEntregueKey])
+        const membroNome = String((membrosCache || []).find(x => asId(x?.id) === mid)?.nome || mid)
+        const revistaNome = String(revistaById.get(selectedRevistaId)?.[revistaLabelKey] ?? selectedRevistaId)
+        lancamentos.push({
+          mid,
+          membroNome,
+          rowId: rowTrimId,
+          revistaId: selectedRevistaId,
+          revistaNome,
+          revistaTrimId: rowRevTrimId,
+          valor: valorAtual,
+          pago: !!pagoAtual,
+          entregue: !!entregueAtual
+        })
+      })
+      lancamentos.sort((a, b) => String(a.membroNome).localeCompare(String(b.membroNome), 'pt-BR', { sensitivity: 'base' }))
+
       tableRevMembros.innerHTML = ''
       const thead = document.createElement('thead')
       const hr = document.createElement('tr')
-      ;['Nome', 'Total A Pagar', 'Revista', 'Valor', 'Pago', 'Entregue'].forEach(t => {
+      ;['MEMBRO', 'REVISTA', 'VALOR', 'PAGO', 'ENTREGUE', ''].forEach(t => {
         const th = document.createElement('th')
-        th.textContent = t === 'Total A Pagar' ? '' : t
-        if (t === 'Total A Pagar') {
-          th.style.width = '120px'
-          th.style.minWidth = '110px'
-        }
-        if (t === 'Valor') {
+        th.textContent = t
+        if (t === 'VALOR') {
           th.style.width = '110px'
           th.style.minWidth = '110px'
         }
-        if (t === 'Pago' || t === 'Entregue') {
+        if (t === 'PAGO' || t === 'ENTREGUE') {
           th.style.width = '74px'
           th.style.minWidth = '74px'
           th.style.textAlign = 'center'
+        }
+        if (t === '') {
+          th.style.width = '96px'
+          th.style.minWidth = '96px'
         }
         hr.appendChild(th)
       })
@@ -4279,132 +4442,71 @@ function renderEbdScreen(schema, table) {
       let totalPedido = 0
       let totalPago = 0
       const pedidosQtdByRevista = new Map()
-      const membros = (membrosCache || []).slice().sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR', { sensitivity: 'base' }))
-      for (const m of membros) {
-        const mid = asId(m?.id)
-        const rowTrim = membroLinkTrim.get(mid) || null
-        const rowTrimId = asId(rowTrim?.[membroRevistaTrimestreIdKey])
-        const rowRevTrimId = asId(rowTrim?.[membroRevistaTrimestreRevistaTrimKey])
-        const rowRevTrim = rowRevTrimId ? revTrimById.get(rowRevTrimId) : null
-        const selectedRevistaId = asId(rowRevTrim?.[revistaTrimestreRevistaKey])
-        const valorAtual = toNumberOrNull(rowRevTrim?.[revistaTrimestreValorKey]) || 0
-        const pagoAtual = toBool(rowTrim?.[membroRevistaTrimestrePagoKey])
-        const entregueAtual = toBool(rowTrim?.[membroRevistaTrimestreEntregueKey])
-        const savedValorPagar = toNumberOrNull(rowTrim?.[membroRevistaTrimestreValorPagarKey])
-        const valorPagarTrim = selectedRevistaId ? (savedValorPagar !== null ? savedValorPagar : (pagoAtual ? 0 : valorAtual)) : 0
-        if (selectedRevistaId) {
-          totalPedido += valorAtual
-          pedidosQtdByRevista.set(selectedRevistaId, (pedidosQtdByRevista.get(selectedRevistaId) || 0) + 1)
-        }
-        if (selectedRevistaId && pagoAtual) totalPago += valorAtual
+      lancamentos.forEach(x => {
+        totalPedido += x.valor || 0
+        pedidosQtdByRevista.set(x.revistaId, (pedidosQtdByRevista.get(x.revistaId) || 0) + 1)
+        if (x.pago) totalPago += x.valor || 0
 
         const tr = document.createElement('tr')
-        const tdNome = document.createElement('td')
-        tdNome.textContent = String(m?.nome || '')
-        tr.appendChild(tdNome)
+        const tdM = document.createElement('td'); tdM.textContent = x.membroNome
+        const tdR = document.createElement('td'); tdR.textContent = x.revistaNome
+        const tdV = document.createElement('td'); tdV.textContent = moneyBr(x.valor || 0)
+        const tdP = document.createElement('td'); tdP.style.textAlign = 'center'
+        const ckP = document.createElement('input'); ckP.type = 'checkbox'; ckP.checked = !!x.pago
+        tdP.appendChild(ckP)
+        const tdE = document.createElement('td'); tdE.style.textAlign = 'center'
+        const ckE = document.createElement('input'); ckE.type = 'checkbox'; ckE.checked = !!x.entregue
+        tdE.appendChild(ckE)
 
-        const tdTotal = document.createElement('td')
-        tdTotal.style.width = '120px'
-        tdTotal.style.minWidth = '110px'
-        tdTotal.style.whiteSpace = 'nowrap'
-        tdTotal.style.color = 'var(--danger)'
-        tdTotal.textContent = moneyBr(valorPagarTrim || 0)
-        tr.appendChild(tdTotal)
+        const tdA = document.createElement('td')
+        const actions = document.createElement('div'); actions.className = 'grid-actions'
+        const btnEdit = document.createElement('button'); btnEdit.type = 'button'; btnEdit.className = 'icon-btn'; btnEdit.title = 'Editar'; btnEdit.setAttribute('aria-label', 'Editar'); setButtonIcon(btnEdit, 'edit')
+        const btnDel = document.createElement('button'); btnDel.type = 'button'; btnDel.className = 'danger icon-btn'; btnDel.title = 'Excluir'; btnDel.setAttribute('aria-label', 'Excluir'); setButtonIcon(btnDel, 'trash')
+        actions.appendChild(btnEdit); actions.appendChild(btnDel)
+        tdA.appendChild(actions)
 
-        const tdRev = document.createElement('td')
-        const selRev = document.createElement('select')
-        const optBlank = document.createElement('option')
-        optBlank.value = ''
-        optBlank.textContent = ''
-        selRev.appendChild(optBlank)
-        ;(revistasCache || []).forEach(rv => {
-          const rid = asId(rv?.[revistaIdKey])
-          if (!rid) return
-          const opt = document.createElement('option')
-          opt.value = rid
-          opt.textContent = String(rv?.[revistaLabelKey] ?? rid)
-          selRev.appendChild(opt)
-        })
-        selRev.value = selectedRevistaId
-        tdRev.appendChild(selRev)
-        tr.appendChild(tdRev)
-
-        const tdValor = document.createElement('td')
-        tdValor.style.width = '110px'
-        tdValor.style.minWidth = '110px'
-        const iValor = document.createElement('input')
-        iValor.type = 'text'
-        iValor.readOnly = true
-        iValor.style.width = '96px'
-        iValor.style.padding = '8px'
-        iValor.style.fontSize = '12px'
-        iValor.value = moneyBr(valorAtual)
-        tdValor.appendChild(iValor)
-        tr.appendChild(tdValor)
-
-        const tdPago = document.createElement('td')
-        tdPago.style.textAlign = 'center'
-        const ckPago = document.createElement('input')
-        ckPago.type = 'checkbox'
-        ckPago.checked = pagoAtual
-        tdPago.appendChild(ckPago)
-        tr.appendChild(tdPago)
-
-        const tdEnt = document.createElement('td')
-        tdEnt.style.textAlign = 'center'
-        const ckEnt = document.createElement('input')
-        ckEnt.type = 'checkbox'
-        ckEnt.checked = entregueAtual
-        tdEnt.appendChild(ckEnt)
-        tr.appendChild(tdEnt)
-
-        async function saveMemberRow() {
+        const saveRowFlags = async () => {
           if (!selectedTrimestreId) return
-          const rid = asId(selRev.value)
-          if (!rid && (ckPago.checked || ckEnt.checked)) {
-            ckPago.checked = false
-            ckEnt.checked = false
-            showStatus('Selecione uma revista para marcar pago/entregue.', 'error')
-            return
-          }
-          if (!rid) {
-            iValor.value = moneyBr(0)
-          }
-          const revTrimId = rid ? await ensureRevistaTrimestre(selectedTrimestreId, rid) : ''
-          const rtNow = rid ? getRevistaTrimestreByTrimAndRev(selectedTrimestreId, rid) : null
-          const valorBase = rtNow ? (toNumberOrNull(rtNow?.[revistaTrimestreValorKey]) || 0) : 0
-          const valorAPagar = rid ? (ckPago.checked ? 0 : valorBase) : null
-          iValor.value = moneyBr(valorBase)
-          await persistMembroRevista(mid, rowTrimId, revTrimId, valorAPagar, ckPago.checked, ckEnt.checked)
+          const rtNow = x.revistaTrimId ? (revTrimById.get(x.revistaTrimId) || null) : null
+          const valorBase = rtNow ? (toNumberOrNull(rtNow?.[revistaTrimestreValorKey]) || 0) : (x.valor || 0)
+          const valorAPagar = ckP.checked ? 0 : valorBase
+          await persistMembroRevista(x.mid, x.rowId, x.revistaTrimId, valorAPagar, ckP.checked, ckE.checked)
           await refreshRevistas()
         }
-        selRev.onchange = () => { saveMemberRow().catch(e => showStatus(String(e?.message || e), 'error')) }
-        ckPago.onchange = () => { saveMemberRow().catch(e => showStatus(String(e?.message || e), 'error')) }
-        ckEnt.onchange = () => { saveMemberRow().catch(e => showStatus(String(e?.message || e), 'error')) }
-        tbody.appendChild(tr)
-      }
+        ckP.onchange = () => { saveRowFlags().catch(e => showStatus(String(e?.message || e), 'error')) }
+        ckE.onchange = () => { saveRowFlags().catch(e => showStatus(String(e?.message || e), 'error')) }
 
-      const tFoot = document.createElement('tr')
-      tFoot.className = 'ebd-group'
-      const tdTotLabel = document.createElement('td')
-      tdTotLabel.textContent = 'Total'
-      const tdTotPedido = document.createElement('td')
-      tdTotPedido.textContent = moneyBr(totalPedido)
-      const tdEmptyRev = document.createElement('td')
-      tdEmptyRev.textContent = ''
-      const tdTotPago = document.createElement('td')
-      tdTotPago.textContent = moneyBr(totalPago)
-      const tdEmptyPg = document.createElement('td')
-      tdEmptyPg.textContent = ''
-      const tdEmptyEnt = document.createElement('td')
-      tdEmptyEnt.textContent = ''
-      tFoot.appendChild(tdTotLabel)
-      tFoot.appendChild(tdTotPedido)
-      tFoot.appendChild(tdEmptyRev)
-      tFoot.appendChild(tdTotPago)
-      tFoot.appendChild(tdEmptyPg)
-      tFoot.appendChild(tdEmptyEnt)
-      tbody.appendChild(tFoot)
+        btnEdit.onclick = (ev) => {
+          try { ev?.stopPropagation?.() } catch {}
+          editMembroRevistaRowId = x.rowId
+          selRMembro.value = x.mid
+          selRRevista.value = x.revistaId
+          ckRPago.checked = !!x.pago
+          ckREnt.checked = !!x.entregue
+          updateValorForm()
+        }
+        btnDel.onclick = async (ev) => {
+          try { ev?.stopPropagation?.() } catch {}
+          const ok = await confirmModal({ title: 'Confirmar exclusão', message: 'Excluir lançamento?', confirmText: 'Excluir', cancelText: 'Cancelar', danger: true })
+          if (!ok) return
+          try {
+            await apiDelete(EBD_MEMBRO_REVISTA_TRIMESTRE_TABLE, membroRevistaTrimestreIdKey, x.rowId)
+            if (editMembroRevistaRowId === x.rowId) editMembroRevistaRowId = ''
+            await refreshRevistas()
+          } catch (e) {
+            showStatus(String(e?.message || e), 'error')
+          }
+        }
+
+        tr.appendChild(tdM)
+        tr.appendChild(tdR)
+        tr.appendChild(tdV)
+        tr.appendChild(tdP)
+        tr.appendChild(tdE)
+        tr.appendChild(tdA)
+        tbody.appendChild(tr)
+      })
+
       tableRevMembros.appendChild(tbody)
 
       const dif = totalPedido - totalPago
