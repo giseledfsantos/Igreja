@@ -882,6 +882,9 @@ function renderTableScreen(schema, table) {
   if (String(table.name).toLowerCase() === 'circulo_oracao') {
     return renderCirculoOracaoScreen(schema, table)
   }
+  if (String(table.name).toLowerCase() === 'agenda') {
+    return renderAgendaScreen(schema, table)
+  }
   const cardList = document.createElement('section')
   cardList.className = 'card'
   const hList = document.createElement('h2')
@@ -5399,6 +5402,1412 @@ function renderCirculoOracaoScreen(schema, table) {
     applyStickyOffsets()
   })
   load().catch(e => showStatus(String(e?.message || e), 'error'))
+}
+
+function renderAgendaScreen(schema, table) {
+  const screens = el('screens')
+  clear(screens)
+
+  const status = document.createElement('div')
+  status.className = 'status'
+  screens.appendChild(status)
+  let statusTimer = null
+  function showStatus(text, type) {
+    status.textContent = text
+    status.classList.remove('success', 'error')
+    if (type === 'success') status.classList.add('success')
+    if (type === 'error') status.classList.add('error')
+    status.style.display = 'block'
+    if (statusTimer) clearTimeout(statusTimer)
+    if (type !== 'error') statusTimer = setTimeout(() => { status.style.display = 'none' }, 2500)
+  }
+
+  const AGENDA_TABLE = 'agenda'
+
+  function pad2(n) { return String(n).padStart(2, '0') }
+  function isoDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+  function brDate(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}` }
+  function parseIsoDate(s) {
+    const v = String(s ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null
+    const [y, m, d] = v.split('-').map(Number)
+    const dt = new Date(y, (m || 1) - 1, d || 1)
+    if (!Number.isFinite(dt.getTime())) return null
+    return dt
+  }
+  function parseBrDate(s) {
+    const v = String(s ?? '').trim()
+    const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+    if (!m) return null
+    const dd = Number(m[1])
+    const mm = Number(m[2])
+    const yy = Number(m[3])
+    const dt = new Date(yy, (mm || 1) - 1, dd || 1)
+    if (!Number.isFinite(dt.getTime())) return null
+    if (dt.getFullYear() !== yy) return null
+    if (dt.getMonth() !== (mm - 1)) return null
+    if (dt.getDate() !== dd) return null
+    dt.setHours(0, 0, 0, 0)
+    return dt
+  }
+  function parseBrDateToIso(s) {
+    const d = parseBrDate(s)
+    return d ? isoDate(d) : null
+  }
+  function formatBrDateInput(raw) {
+    const digits = String(raw ?? '').replace(/\D/g, '').slice(0, 8)
+    const d = digits.slice(0, 2)
+    const m = digits.slice(2, 4)
+    const y = digits.slice(4, 8)
+    if (digits.length <= 2) return d
+    if (digits.length <= 4) return `${d}/${m}`
+    return `${d}/${m}/${y}`
+  }
+  function toIntOrNull(v) {
+    const n = Number(v)
+    if (!Number.isFinite(n)) return null
+    return Math.trunc(n)
+  }
+  function addDays(d, n) {
+    const x = new Date(d.getTime())
+    x.setDate(x.getDate() + Number(n || 0))
+    return x
+  }
+  function addMonths(d, n) {
+    const x = new Date(d.getTime())
+    const day = x.getDate()
+    x.setDate(1)
+    x.setMonth(x.getMonth() + Number(n || 0))
+    const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate()
+    x.setDate(Math.min(day, last))
+    return x
+  }
+  function addYears(d, n) {
+    const x = new Date(d.getTime())
+    const m = x.getMonth()
+    const day = x.getDate()
+    x.setDate(1)
+    x.setFullYear(x.getFullYear() + Number(n || 0))
+    x.setMonth(m)
+    const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate()
+    x.setDate(Math.min(day, last))
+    return x
+  }
+  function startOfWeek(d) {
+    const x = new Date(d.getTime())
+    x.setHours(0, 0, 0, 0)
+    const dow = x.getDay()
+    x.setDate(x.getDate() - dow)
+    return x
+  }
+  function endOfWeek(d) {
+    const s = startOfWeek(d)
+    return addDays(s, 6)
+  }
+  async function apiUpdateWhere(tableName, params, payload) {
+    const qs = new URLSearchParams()
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v === undefined || v === null) return
+      if (Array.isArray(v)) v.forEach(x => qs.append(k, String(x)))
+      else qs.set(k, String(v))
+    })
+    const q = qs.toString()
+    if (!q) throw new Error('PATCH requires filters')
+    const path = `/${encodeURIComponent(tableName)}?${q}`
+    const res = await apiFetch(path, { method: 'PATCH', headers: headers(), body: JSON.stringify(payload || {}) })
+    const data = await res.json()
+    if (Array.isArray(data) && data.length === 0) throw new Error('0 rows affected')
+    return data
+  }
+  async function nextControle() {
+    const rows = await apiGet(AGENDA_TABLE, { select: 'id_controle', order: 'id_controle.desc', limit: 1 })
+    const max = toIntOrNull(rows?.[0]?.id_controle) || 0
+    return max + 1
+  }
+
+  const card = document.createElement('section')
+  card.className = 'card'
+  const h = document.createElement('h2')
+  h.textContent = 'Agenda'
+  card.appendChild(h)
+
+  const form = document.createElement('div')
+  form.className = 'agenda-form'
+
+  const fData = document.createElement('div'); fData.className = 'field'
+  const lData = document.createElement('label'); lData.textContent = 'Data'
+  const iData = document.createElement('input')
+  iData.type = 'text'
+  iData.inputMode = 'numeric'
+  iData.autocomplete = 'off'
+  iData.placeholder = 'dd/mm/aaaa'
+  iData.maxLength = 10
+  fData.appendChild(lData); fData.appendChild(iData)
+
+  const fDesc = document.createElement('div'); fDesc.className = 'field'
+  const lDesc = document.createElement('label'); lDesc.textContent = 'Descrição'
+  const iDesc = document.createElement('textarea')
+  iDesc.rows = 3
+  fDesc.appendChild(lDesc); fDesc.appendChild(iDesc)
+
+  const fRepeat = document.createElement('div'); fRepeat.className = 'field'
+  const lRepeat = document.createElement('label'); lRepeat.textContent = ''
+  const repeatRow = document.createElement('div')
+  repeatRow.style.display = 'flex'
+  repeatRow.style.gap = '10px'
+  repeatRow.style.alignItems = 'center'
+  const repeatSummary = document.createElement('div')
+  repeatSummary.className = 'agenda-repeat-summary'
+  repeatSummary.style.flex = '1'
+  repeatSummary.style.color = 'var(--muted)'
+  repeatSummary.textContent = 'Este evento não se repete.'
+  const btnRepeatPick = document.createElement('button')
+  btnRepeatPick.type = 'button'
+  btnRepeatPick.className = 'btn-secondary'
+  btnRepeatPick.textContent = 'Repetir'
+  repeatRow.appendChild(btnRepeatPick)
+  repeatRow.appendChild(repeatSummary)
+  const repeatPanel = document.createElement('div')
+  repeatPanel.className = 'agenda-repeat-panel'
+  repeatPanel.style.display = 'none'
+  const repeatHint = document.createElement('div')
+  repeatHint.className = 'agenda-repeat-hint'
+  const repeatOptions = document.createElement('div')
+  repeatOptions.className = 'agenda-repeat-options'
+  repeatPanel.appendChild(repeatHint)
+  repeatPanel.appendChild(repeatOptions)
+  fRepeat.appendChild(lRepeat)
+  fRepeat.appendChild(repeatRow)
+  fRepeat.appendChild(repeatPanel)
+
+  const actions = document.createElement('div')
+  actions.className = 'actions'
+  actions.style.justifyContent = 'flex-end'
+  const btnSalvar = document.createElement('button')
+  btnSalvar.type = 'button'
+  btnSalvar.className = 'icon-btn'
+  btnSalvar.title = 'Salvar'
+  btnSalvar.setAttribute('aria-label', 'Salvar')
+  setButtonIcon(btnSalvar, 'save')
+  const btnExcluir = document.createElement('button')
+  btnExcluir.type = 'button'
+  btnExcluir.className = 'danger icon-btn'
+  btnExcluir.title = 'Excluir'
+  btnExcluir.setAttribute('aria-label', 'Excluir')
+  setButtonIcon(btnExcluir, 'trash')
+  actions.appendChild(btnSalvar)
+  actions.appendChild(btnExcluir)
+
+  form.appendChild(fData)
+  form.appendChild(fDesc)
+  form.appendChild(fRepeat)
+  form.appendChild(actions)
+  card.appendChild(form)
+
+  const cardCal = document.createElement('section')
+  cardCal.className = 'card'
+  const hCal = document.createElement('h2')
+  hCal.textContent = 'Calendário'
+  cardCal.appendChild(hCal)
+
+  const viewTabs = document.createElement('div')
+  viewTabs.className = 'subtabs'
+  const btnDia = document.createElement('button'); btnDia.className = 'subtab'; btnDia.textContent = 'Dia'
+  const btnSemana = document.createElement('button'); btnSemana.className = 'subtab'; btnSemana.textContent = 'Semana'
+  const btnMes = document.createElement('button'); btnMes.className = 'subtab active'; btnMes.textContent = 'Mês'
+  viewTabs.appendChild(btnDia); viewTabs.appendChild(btnSemana); viewTabs.appendChild(btnMes)
+  cardCal.appendChild(viewTabs)
+
+  const nav = document.createElement('div')
+  nav.className = 'agenda-toolbar'
+  const navLeft = document.createElement('div')
+  navLeft.className = 'agenda-nav'
+  const btnPrev = document.createElement('button'); btnPrev.type = 'button'; btnPrev.className = 'btn-secondary'; btnPrev.textContent = '◀'
+  const btnToday = document.createElement('button'); btnToday.type = 'button'; btnToday.className = 'btn-secondary'; btnToday.textContent = 'Hoje'
+  const btnNext = document.createElement('button'); btnNext.type = 'button'; btnNext.className = 'btn-secondary'; btnNext.textContent = '▶'
+  navLeft.appendChild(btnPrev); navLeft.appendChild(btnToday); navLeft.appendChild(btnNext)
+  const navTitle = document.createElement('div')
+  navTitle.className = 'agenda-title'
+  nav.appendChild(navLeft)
+  nav.appendChild(navTitle)
+  cardCal.appendChild(nav)
+
+  const calWrap = document.createElement('div')
+  calWrap.className = 'agenda-calendar'
+  const calBody = document.createElement('div')
+  calWrap.appendChild(calBody)
+  cardCal.appendChild(calWrap)
+
+  const eventsWrap = document.createElement('div')
+  eventsWrap.className = 'agenda-events'
+  cardCal.appendChild(eventsWrap)
+
+  screens.appendChild(card)
+  screens.appendChild(cardCal)
+
+  let viewMode = 'month'
+  let selectedDate = new Date()
+  selectedDate.setHours(0, 0, 0, 0)
+  let anchorDate = new Date(selectedDate.getTime())
+  let agendaRows = []
+  let selectedEventId = ''
+  let selectedEventControle = null
+  let repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
+
+  function weekdayPt(weekdayIdx) {
+    const W = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+    return W[Number(weekdayIdx) || 0] || ''
+  }
+  function weekOrdPt(n) {
+    const i = Math.max(1, Number(n) || 1)
+    return `${i}ª`
+  }
+  function describeRepeat(state, baseIso) {
+    const s = state || { freq: 'none' }
+    const freq = String(s.freq || 'none')
+    if (freq === 'none') return 'Este evento não se repete.'
+    if (freq === 'custom') return 'Selecionar datas para repetir.'
+    const interval = Math.max(1, toIntOrNull(s.interval) || 1)
+    if (freq === 'daily') return `A cada ${interval} dia`
+    if (freq === 'weekly') return `A cada ${interval} semana`
+    if (freq === 'yearly') return `A cada ${interval} ano`
+    if (freq === 'monthly') {
+      const d0 = parseIsoDate(baseIso)
+      const day = d0 ? d0.getDate() : 1
+      const w = d0 ? d0.getDay() : 0
+      const wk = d0 ? Math.ceil(day / 7) : 1
+      const mm = String(s.monthlyMode || 'dayOfMonth')
+      if (mm === 'nthWeekday') return `A cada ${interval} mês (${weekOrdPt(wk)} ${weekdayPt(w)})`
+      return `A cada ${interval} mês (${day}º dia)`
+    }
+    return 'Este evento não se repete.'
+  }
+  function renderRepeatSummary() {
+    const baseIso = parseBrDateToIso(iData.value) || isoDate(selectedDate)
+    repeatSummary.textContent = describeRepeat(repeatState, baseIso)
+  }
+
+  function renderRepeatInline() {
+    const baseIso = parseBrDateToIso(iData.value) || isoDate(selectedDate)
+    const baseDate = parseIsoDate(baseIso) || new Date()
+    const baseDay = baseDate.getDate()
+    const baseDow = baseDate.getDay()
+    const baseNth = Math.max(1, Math.ceil(baseDay / 7))
+    const btnMonthDomLabel = `Repetir no(a) ${baseDay}º dia`
+    const btnMonthNthLabel = `Repetir no(a) ${weekOrdPt(baseNth)} ${weekdayPt(baseDow)}`
+
+    repeatHint.textContent = describeRepeat(repeatState, baseIso)
+    repeatOptions.innerHTML = ''
+
+    function setFreq(nextFreq) {
+      repeatState.freq = String(nextFreq || 'none')
+      if (repeatState.freq !== 'monthly') repeatState.monthlyMode = 'dayOfMonth'
+      if (repeatState.freq !== 'custom') repeatState.customDates = []
+      renderRepeatSummary()
+      renderRepeatInline()
+    }
+    function setIntervalFromInput(inp) {
+      const v = Math.max(1, toIntOrNull(inp.value) || 1)
+      repeatState.interval = v
+      inp.value = String(v)
+      renderRepeatSummary()
+      repeatHint.textContent = describeRepeat(repeatState, baseIso)
+    }
+    function addRow({ freq, unit } = {}) {
+      const row = document.createElement('div')
+      row.className = 'agenda-repeat-row'
+      const r = document.createElement('input')
+      r.type = 'radio'
+      r.name = 'agendaRepeatInline'
+      r.checked = String(repeatState.freq || 'none') === String(freq)
+      row.appendChild(r)
+
+      if (freq === 'none') {
+        const t = document.createElement('div')
+        t.textContent = 'Não repetir'
+        row.appendChild(t)
+        row.onclick = () => setFreq('none')
+        return row
+      }
+
+      const t1 = document.createElement('div')
+      t1.textContent = 'A cada'
+      const n = document.createElement('input')
+      n.type = 'number'
+      n.min = '1'
+      n.step = '1'
+      n.value = String(Math.max(1, toIntOrNull(repeatState.interval) || 1))
+      const t2 = document.createElement('div')
+      t2.textContent = String(unit || '')
+      row.appendChild(t1)
+      row.appendChild(n)
+      row.appendChild(t2)
+
+      row.onclick = (ev) => {
+        if (ev && ev.target === n) return
+        setFreq(freq)
+        try { n.focus() } catch {}
+      }
+      n.onchange = () => setIntervalFromInput(n)
+      n.onblur = () => setIntervalFromInput(n)
+      return row
+    }
+
+    repeatOptions.appendChild(addRow({ freq: 'none' }))
+    repeatOptions.appendChild(addRow({ freq: 'daily', unit: 'dia' }))
+    repeatOptions.appendChild(addRow({ freq: 'weekly', unit: 'semana' }))
+
+    const monthlyWrap = document.createElement('div')
+    monthlyWrap.style.display = 'grid'
+    monthlyWrap.style.gap = '10px'
+    const monthlyRow = addRow({ freq: 'monthly', unit: 'mês' })
+    monthlyWrap.appendChild(monthlyRow)
+    const monthlyActions = document.createElement('div')
+    monthlyActions.className = 'agenda-repeat-monthly-actions'
+    const btnDom = document.createElement('button')
+    btnDom.type = 'button'
+    btnDom.className = 'btn-secondary'
+    btnDom.textContent = btnMonthDomLabel
+    const btnNth = document.createElement('button')
+    btnNth.type = 'button'
+    btnNth.className = 'btn-secondary'
+    btnNth.textContent = btnMonthNthLabel
+    const btnCustom = document.createElement('button')
+    btnCustom.type = 'button'
+    btnCustom.className = 'btn-secondary'
+    btnCustom.textContent = 'Selecionar datas para repetir'
+    monthlyActions.appendChild(btnDom)
+    monthlyActions.appendChild(btnNth)
+    monthlyActions.appendChild(btnCustom)
+    monthlyWrap.appendChild(monthlyActions)
+    repeatOptions.appendChild(monthlyWrap)
+
+    repeatOptions.appendChild(addRow({ freq: 'yearly', unit: 'ano' }))
+
+    const customWrap = document.createElement('div')
+    customWrap.className = 'agenda-repeat-custom'
+    const cHead = document.createElement('div')
+    cHead.className = 'agenda-repeat-custom-head'
+    cHead.textContent = 'Datas para repetir'
+    const cRow = document.createElement('div')
+    cRow.className = 'agenda-repeat-custom-row'
+    const iCustom = document.createElement('input')
+    iCustom.type = 'date'
+    iCustom.value = baseIso
+    const btnAdd = document.createElement('button')
+    btnAdd.type = 'button'
+    btnAdd.className = 'btn-secondary'
+    btnAdd.textContent = 'Adicionar'
+    cRow.appendChild(iCustom)
+    cRow.appendChild(btnAdd)
+    const cList = document.createElement('div')
+    cList.className = 'agenda-repeat-custom-list'
+    customWrap.appendChild(cHead)
+    customWrap.appendChild(cRow)
+    customWrap.appendChild(cList)
+
+    function renderCustomList() {
+      cList.innerHTML = ''
+      const baseYear = String(baseIso || '').slice(0, 4)
+      const endIso = baseYear ? `${baseYear}-12-31` : ''
+      const set = new Set()
+      set.add(baseIso)
+      ;(Array.isArray(repeatState.customDates) ? repeatState.customDates : []).forEach(x => set.add(String(x).slice(0, 10)))
+      const arr = Array.from(set)
+        .filter(Boolean)
+        .filter(dt => (!baseYear || String(dt).slice(0, 4) === baseYear) && (!endIso || String(dt) <= endIso))
+        .sort()
+      repeatState.customDates = arr
+      arr.forEach(dt => {
+        const line = document.createElement('div')
+        line.style.display = 'flex'
+        line.style.alignItems = 'center'
+        line.style.justifyContent = 'space-between'
+        line.style.gap = '10px'
+        const t = document.createElement('div')
+        t.textContent = dt
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'btn-secondary'
+        b.textContent = 'Remover'
+        b.onclick = () => {
+          repeatState.customDates = (repeatState.customDates || []).filter(x => String(x) !== String(dt))
+          renderCustomList()
+          renderRepeatSummary()
+          repeatHint.textContent = describeRepeat(repeatState, baseIso)
+        }
+        line.appendChild(t)
+        line.appendChild(b)
+        cList.appendChild(line)
+      })
+    }
+    btnAdd.onclick = () => {
+      const v = String(iCustom.value || '').slice(0, 10)
+      if (!v) return
+      const baseYear = String(baseIso || '').slice(0, 4)
+      const endIso = baseYear ? `${baseYear}-12-31` : ''
+      if ((baseYear && String(v).slice(0, 4) !== baseYear) || (endIso && String(v) > endIso)) return
+      repeatState.customDates = Array.from(new Set([...(repeatState.customDates || []), v])).sort()
+      renderCustomList()
+      renderRepeatSummary()
+      repeatHint.textContent = describeRepeat(repeatState, baseIso)
+    }
+
+    btnDom.onclick = () => { repeatState.freq = 'monthly'; repeatState.monthlyMode = 'dayOfMonth'; renderRepeatSummary(); renderRepeatInline() }
+    btnNth.onclick = () => { repeatState.freq = 'monthly'; repeatState.monthlyMode = 'nthWeekday'; renderRepeatSummary(); renderRepeatInline() }
+    btnCustom.onclick = () => { repeatState.freq = 'custom'; renderRepeatSummary(); renderRepeatInline() }
+
+    if (String(repeatState.freq || 'none') === 'monthly') {
+      monthlyActions.style.display = 'grid'
+      btnDom.classList.toggle('active', String(repeatState.monthlyMode) !== 'nthWeekday')
+      btnNth.classList.toggle('active', String(repeatState.monthlyMode) === 'nthWeekday')
+    } else {
+      monthlyActions.style.display = 'none'
+    }
+
+    if (String(repeatState.freq || 'none') === 'custom') {
+      repeatOptions.appendChild(customWrap)
+      renderCustomList()
+    }
+  }
+
+  function setActiveView() {
+    btnDia.classList.toggle('active', viewMode === 'day')
+    btnSemana.classList.toggle('active', viewMode === 'week')
+    btnMes.classList.toggle('active', viewMode === 'month')
+  }
+
+  function clearSelection() {
+    selectedEventId = ''
+    selectedEventControle = null
+    btnExcluir.disabled = true
+    repeatPanel.style.display = 'none'
+  }
+
+  let __agendaDatePickerEls = null
+  function ensureAgendaDatePicker() {
+    if (__agendaDatePickerEls) return __agendaDatePickerEls
+    const pop = document.createElement('div')
+    pop.className = 'agenda-date-picker'
+    pop.style.display = 'none'
+
+    const header = document.createElement('div')
+    header.className = 'agenda-date-picker-header'
+    const btnPrevM = document.createElement('button')
+    btnPrevM.type = 'button'
+    btnPrevM.className = 'btn-secondary'
+    btnPrevM.textContent = '<'
+    const title = document.createElement('div')
+    title.className = 'agenda-date-picker-title'
+    const btnNextM = document.createElement('button')
+    btnNextM.type = 'button'
+    btnNextM.className = 'btn-secondary'
+    btnNextM.textContent = '>'
+    header.appendChild(btnPrevM)
+    header.appendChild(title)
+    header.appendChild(btnNextM)
+
+    const grid = document.createElement('div')
+    grid.className = 'agenda-date-picker-grid'
+
+    pop.appendChild(header)
+    pop.appendChild(grid)
+    document.body.appendChild(pop)
+
+    const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+    let view = { y: 0, m: 0 }
+    let openFor = null
+    let outsideHandler = null
+
+    function positionForInput(input) {
+      const r = input.getBoundingClientRect()
+      pop.style.visibility = 'hidden'
+      pop.style.display = 'block'
+      const w = Math.floor(Math.min(r.width, window.innerWidth - 24))
+      pop.style.width = `${w}px`
+      pop.style.maxWidth = `${w}px`
+      pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - w - 12))}px`
+      let top = r.bottom + 6
+      if (top + pop.offsetHeight > window.innerHeight - 12) top = r.top - pop.offsetHeight - 6
+      pop.style.top = `${Math.max(12, top)}px`
+      pop.style.visibility = ''
+    }
+
+    function render() {
+      title.textContent = `${MONTHS[view.m] || ''} ${view.y}`
+      grid.innerHTML = ''
+      DOW.forEach(d => {
+        const el = document.createElement('div')
+        el.className = 'agenda-date-picker-dow'
+        el.textContent = d
+        grid.appendChild(el)
+      })
+
+      const first = new Date(view.y, view.m, 1)
+      first.setHours(0, 0, 0, 0)
+      const start = startOfWeek(first)
+      const selectedIso = parseBrDateToIso(openFor?.value) || ''
+
+      for (let i = 0; i < 42; i++) {
+        const d = addDays(start, i)
+        d.setHours(0, 0, 0, 0)
+        const iso = isoDate(d)
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'agenda-date-picker-day'
+        if (d.getMonth() !== view.m) b.classList.add('muted')
+        if (selectedIso && iso === selectedIso) b.classList.add('selected')
+        b.textContent = String(d.getDate())
+        b.onclick = () => {
+          if (openFor) {
+            openFor.value = brDate(d)
+            try { openFor.dispatchEvent(new Event('change', { bubbles: true })) } catch {}
+          }
+          close()
+        }
+        grid.appendChild(b)
+      }
+    }
+
+    function open(input) {
+      openFor = input
+      const base = parseBrDate(input.value) || new Date()
+      view = { y: base.getFullYear(), m: base.getMonth() }
+      positionForInput(input)
+      render()
+      pop.style.display = 'block'
+      if (outsideHandler) window.removeEventListener('mousedown', outsideHandler, true)
+      outsideHandler = (ev) => {
+        if (!pop.contains(ev.target) && ev.target !== input) close()
+      }
+      window.addEventListener('mousedown', outsideHandler, true)
+    }
+
+    function close() {
+      pop.style.display = 'none'
+      if (outsideHandler) window.removeEventListener('mousedown', outsideHandler, true)
+      outsideHandler = null
+      openFor = null
+    }
+
+    btnPrevM.onclick = () => {
+      const d = new Date(view.y, view.m, 1)
+      d.setMonth(d.getMonth() - 1)
+      view = { y: d.getFullYear(), m: d.getMonth() }
+      render()
+    }
+    btnNextM.onclick = () => {
+      const d = new Date(view.y, view.m, 1)
+      d.setMonth(d.getMonth() + 1)
+      view = { y: d.getFullYear(), m: d.getMonth() }
+      render()
+    }
+
+    __agendaDatePickerEls = { pop, open, close, render, positionForInput }
+    return __agendaDatePickerEls
+  }
+
+  function fillFormFromRow(row) {
+    const d = parseIsoDate(String(row?.data ?? '').slice(0, 10))
+    iData.value = d ? brDate(d) : ''
+    iDesc.value = String(row?.descricao ?? '')
+    repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
+    renderRepeatSummary()
+    renderRepeatInline()
+  }
+
+  async function loadRowById(id) {
+    const rows = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', id: `eq.${id}`, limit: 1 })
+    return Array.isArray(rows) ? (rows[0] || null) : null
+  }
+
+  function updateNavTitle() {
+    const m = anchorDate.getMonth()
+    const y = anchorDate.getFullYear()
+    const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    if (viewMode === 'month') {
+      navTitle.textContent = `${MONTHS[m]} / ${y}`
+      return
+    }
+    if (viewMode === 'week') {
+      const s = startOfWeek(anchorDate)
+      const e = endOfWeek(anchorDate)
+      navTitle.textContent = `${isoDate(s)} — ${isoDate(e)}`
+      return
+    }
+    navTitle.textContent = isoDate(anchorDate)
+  }
+
+  function rowsByDateMap() {
+    const map = new Map()
+    ;(Array.isArray(agendaRows) ? agendaRows : []).forEach(r => {
+      const d = String(r?.data ?? '').slice(0, 10)
+      if (!d) return
+      if (!map.has(d)) map.set(d, [])
+      map.get(d).push(r)
+    })
+    return map
+  }
+
+  function renderEventsList() {
+    eventsWrap.innerHTML = ''
+    const key = isoDate(selectedDate)
+    const map = rowsByDateMap()
+    const list = map.get(key) || []
+    if (!list.length) return
+    list.forEach(r => {
+      const div = document.createElement('div')
+      div.className = 'agenda-event'
+      div.classList.toggle('active', String(r?.id ?? '') === String(selectedEventId))
+      div.textContent = String(r?.descricao ?? '')
+      div.onclick = async () => {
+        try {
+          const id = String(r?.id ?? '').trim()
+          if (!id) return
+          selectedEventId = id
+          const full = await loadRowById(id)
+          selectedEventControle = full?.id_controle ?? r?.id_controle ?? null
+          fillFormFromRow(full || r)
+          clearSelection()
+          selectedEventId = id
+          selectedEventControle = full?.id_controle ?? r?.id_controle ?? null
+          btnExcluir.disabled = false
+          renderEventsList()
+        } catch (e) {
+          showStatus(String(e?.message || e), 'error')
+        }
+      }
+      eventsWrap.appendChild(div)
+    })
+  }
+
+  function renderCalendar() {
+    calBody.innerHTML = ''
+    updateNavTitle()
+    setActiveView()
+    const map = rowsByDateMap()
+    const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+    if (viewMode === 'day') {
+      const box = document.createElement('div')
+      box.className = 'agenda-daybox'
+      const title = document.createElement('div')
+      title.className = 'agenda-daybox-title'
+      const dow = WEEKDAYS[anchorDate.getDay()]
+      title.textContent = `${dow} - ${isoDate(anchorDate)}`
+      const has = (map.get(isoDate(anchorDate)) || []).length
+      const meta = document.createElement('div')
+      meta.className = 'agenda-daybox-meta'
+      meta.textContent = has ? `${has} evento(s)` : 'Sem eventos'
+      box.appendChild(title)
+      box.appendChild(meta)
+      calBody.appendChild(box)
+      renderEventsList()
+      return
+    }
+
+    if (viewMode === 'week') {
+      const head = document.createElement('div')
+      head.className = 'agenda-grid agenda-weekdays'
+      WEEKDAYS.forEach(w => {
+        const c = document.createElement('div')
+        c.className = 'agenda-weekday'
+        c.textContent = w
+        head.appendChild(c)
+      })
+      calBody.appendChild(head)
+      const grid = document.createElement('div')
+      grid.className = 'agenda-grid'
+      const s = startOfWeek(anchorDate)
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(s, i)
+        const iso = isoDate(d)
+        const cell = document.createElement('div')
+        cell.className = 'agenda-cell'
+        cell.classList.toggle('selected', iso === isoDate(selectedDate))
+        const num = document.createElement('div')
+        num.className = 'agenda-daynum'
+        num.textContent = String(d.getDate())
+        cell.appendChild(num)
+        const list = map.get(iso) || []
+        list.slice(0, 3).forEach(r => {
+          const line = document.createElement('div')
+          line.className = 'agenda-cell-line'
+          line.textContent = String(r?.descricao ?? '')
+          cell.appendChild(line)
+        })
+        if (list.length > 3) {
+          const more = document.createElement('div')
+          more.className = 'agenda-cell-more'
+          more.textContent = `+${list.length - 3}`
+          cell.appendChild(more)
+        }
+        cell.onclick = () => {
+          selectedDate = new Date(d.getTime())
+          selectedDate.setHours(0, 0, 0, 0)
+          if (!selectedEventId) { iData.value = brDate(selectedDate); renderRepeatSummary() }
+          renderCalendar()
+          renderEventsList()
+        }
+        grid.appendChild(cell)
+      }
+      calBody.appendChild(grid)
+      renderEventsList()
+      return
+    }
+
+    const head = document.createElement('div')
+    head.className = 'agenda-grid agenda-weekdays'
+    WEEKDAYS.forEach(w => {
+      const c = document.createElement('div')
+      c.className = 'agenda-weekday'
+      c.textContent = w
+      head.appendChild(c)
+    })
+    calBody.appendChild(head)
+
+    const grid = document.createElement('div')
+    grid.className = 'agenda-grid'
+    const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
+    const last = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 0)
+    let cur = startOfWeek(first)
+    const end = endOfWeek(last)
+    while (cur.getTime() <= end.getTime()) {
+      const d = new Date(cur.getTime())
+      const iso = isoDate(d)
+      const cell = document.createElement('div')
+      cell.className = 'agenda-cell'
+      if (d.getMonth() !== anchorDate.getMonth()) cell.classList.add('muted')
+      cell.classList.toggle('selected', iso === isoDate(selectedDate))
+      const num = document.createElement('div')
+      num.className = 'agenda-daynum'
+      num.textContent = String(d.getDate())
+      cell.appendChild(num)
+      const has = (map.get(iso) || []).length
+      if (has) {
+        const dot = document.createElement('div')
+        dot.className = 'agenda-dot'
+        cell.appendChild(dot)
+      }
+      cell.onclick = () => {
+        selectedDate = new Date(d.getTime())
+        selectedDate.setHours(0, 0, 0, 0)
+        if (!selectedEventId) { iData.value = brDate(selectedDate); renderRepeatSummary() }
+        renderCalendar()
+        renderEventsList()
+      }
+      grid.appendChild(cell)
+      cur = addDays(cur, 1)
+    }
+    calBody.appendChild(grid)
+    renderEventsList()
+  }
+
+  async function loadRangeForView() {
+    let start = null
+    let end = null
+    if (viewMode === 'month') {
+      const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
+      const last = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 0)
+      start = isoDate(startOfWeek(first))
+      end = isoDate(endOfWeek(last))
+    } else if (viewMode === 'week') {
+      start = isoDate(startOfWeek(anchorDate))
+      end = isoDate(endOfWeek(anchorDate))
+    } else {
+      start = isoDate(anchorDate)
+      end = isoDate(anchorDate)
+    }
+    try {
+      const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,id.asc' })
+      agendaRows = Array.isArray(res) ? res : []
+    } catch (e) {
+      agendaRows = []
+      showStatus(String(e?.message || e), 'error')
+    }
+  }
+
+  function buildRepeatDates(startIso, state) {
+    const d0 = parseIsoDate(startIso)
+    if (!d0) return []
+    const s = state || { freq: 'none' }
+    const freq = String(s.freq || 'none')
+    const end = new Date(d0.getFullYear(), 11, 31)
+    end.setHours(0, 0, 0, 0)
+
+    if (freq === 'none') return [isoDate(d0)]
+
+    if (freq === 'custom') {
+      const set = new Set()
+      set.add(isoDate(d0))
+      ;(Array.isArray(s.customDates) ? s.customDates : []).forEach(x => {
+        const dt = parseIsoDate(String(x ?? '').slice(0, 10))
+        if (dt && dt.getFullYear() === d0.getFullYear() && dt.getTime() <= end.getTime()) set.add(isoDate(dt))
+      })
+      return Array.from(set).sort()
+    }
+
+    const interval = Math.max(1, toIntOrNull(s.interval) || 1)
+    const baseWeekday = d0.getDay()
+    const baseDay = d0.getDate()
+    const baseNth = Math.max(1, Math.ceil(baseDay / 7))
+    const monthlyMode = String(s.monthlyMode || 'dayOfMonth')
+
+    function monthNthWeekdayDate(year, month, weekday, nth) {
+      const first = new Date(year, month, 1)
+      const firstDow = first.getDay()
+      const delta = (weekday - firstDow + 7) % 7
+      let dayNum = 1 + delta + 7 * (Math.max(1, nth) - 1)
+      const lastDay = new Date(year, month + 1, 0).getDate()
+      while (dayNum > lastDay) dayNum -= 7
+      return new Date(year, month, dayNum)
+    }
+
+    const out = []
+    if (freq === 'yearly') return [isoDate(d0)]
+
+    if (freq === 'daily' || freq === 'weekly') {
+      let cur = new Date(d0.getTime())
+      cur.setHours(0, 0, 0, 0)
+      const step = freq === 'daily' ? interval : (interval * 7)
+      while (cur.getTime() <= end.getTime()) {
+        out.push(isoDate(cur))
+        cur = addDays(cur, step)
+      }
+      return out
+    }
+
+    if (freq === 'monthly') {
+      const baseY = d0.getFullYear()
+      const baseM = d0.getMonth()
+      let stepIdx = 0
+      while (true) {
+        let d = null
+        if (stepIdx === 0) d = new Date(d0.getTime())
+        else {
+          const t = addMonths(new Date(baseY, baseM, 1), stepIdx * interval)
+          if (monthlyMode === 'nthWeekday') d = monthNthWeekdayDate(t.getFullYear(), t.getMonth(), baseWeekday, baseNth)
+          else {
+            const lastDay = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate()
+            d = new Date(t.getFullYear(), t.getMonth(), 1)
+            d.setDate(Math.min(baseDay, lastDay))
+          }
+        }
+        d.setHours(0, 0, 0, 0)
+        if (d.getTime() > end.getTime()) break
+        out.push(isoDate(d))
+        stepIdx += 1
+      }
+      return out
+    }
+
+    return [isoDate(d0)]
+  }
+
+  async function refresh() {
+    updateNavTitle()
+    await loadRangeForView()
+    renderCalendar()
+  }
+
+  async function maybeAskApplyAll(ctrl) {
+    const c = toIntOrNull(ctrl)
+    if (!c) return false
+    let rows = []
+    try {
+      const res = await apiGet(AGENDA_TABLE, { select: 'id', id_controle: `eq.${c}` })
+      rows = Array.isArray(res) ? res : []
+    } catch {}
+    if (rows.length <= 1) return false
+    return await confirmModal({ title: 'Repetição', message: 'Deseja aplicar em todos os registros desta repetição?', confirmText: 'Sim', cancelText: 'Não', danger: false })
+  }
+
+  let __agendaRepeatModalEls = null
+  function showAgendaRepeatModal({ baseIso, state } = {}) {
+    const base = String(baseIso || '').trim()
+    const baseDate = parseIsoDate(base) || new Date()
+    const baseDow = baseDate.getDay()
+    const baseDay = baseDate.getDate()
+    const baseNth = Math.max(1, Math.ceil(baseDay / 7))
+    const btnMonthDomLabel = `Repetir no(a) ${baseDay}º dia`
+    const btnMonthNthLabel = `Repetir no(a) ${weekOrdPt(baseNth)} ${weekdayPt(baseDow)}`
+
+    const initial = state || { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', count: 12, customDates: [] }
+    let local = {
+      freq: String(initial.freq || 'none'),
+      interval: Math.max(1, toIntOrNull(initial.interval) || 1),
+      monthlyMode: String(initial.monthlyMode || 'dayOfMonth'),
+      count: Math.max(1, toIntOrNull(initial.count) || 12),
+      customDates: Array.isArray(initial.customDates) ? initial.customDates.map(x => String(x).slice(0, 10)).filter(Boolean) : []
+    }
+
+    if (!__agendaRepeatModalEls) {
+      const backdrop = document.createElement('div')
+      backdrop.className = 'modal-backdrop'
+      backdrop.setAttribute('role', 'presentation')
+      const dialog = document.createElement('div')
+      dialog.className = 'modal'
+      dialog.setAttribute('role', 'dialog')
+      dialog.setAttribute('aria-modal', 'true')
+
+      const title = document.createElement('h3')
+      title.className = 'modal-title'
+      const body = document.createElement('div')
+      body.className = 'modal-message'
+      const actions = document.createElement('div')
+      actions.className = 'modal-actions'
+      const btnCancel = document.createElement('button')
+      btnCancel.type = 'button'
+      btnCancel.className = 'btn-secondary'
+      btnCancel.textContent = 'Cancelar'
+      const btnOk = document.createElement('button')
+      btnOk.type = 'button'
+      btnOk.textContent = 'OK'
+      actions.appendChild(btnCancel)
+      actions.appendChild(btnOk)
+      dialog.appendChild(title)
+      dialog.appendChild(body)
+      dialog.appendChild(actions)
+      backdrop.appendChild(dialog)
+      document.body.appendChild(backdrop)
+
+      __agendaRepeatModalEls = { backdrop, dialog, title, body, btnCancel, btnOk, resolve: null, keyHandler: null }
+
+      const close = (val) => {
+        const els = __agendaRepeatModalEls
+        if (!els) return
+        els.backdrop.classList.remove('open')
+        if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+        els.keyHandler = null
+        const r = els.resolve
+        els.resolve = null
+        if (r) r(val)
+      }
+
+      btnCancel.onclick = () => close(null)
+      btnOk.onclick = () => close(true)
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) close(null) }
+    }
+
+    const els = __agendaRepeatModalEls
+    els.title.textContent = 'Repetir'
+    els.body.innerHTML = ''
+
+    const hint = document.createElement('div')
+    hint.style.color = 'var(--muted)'
+    hint.style.marginBottom = '12px'
+    hint.textContent = (local.freq === 'none') ? 'Este evento não se repete.' : describeRepeat(local, base)
+    els.body.appendChild(hint)
+
+    const list = document.createElement('div')
+    list.style.display = 'grid'
+    list.style.gap = '10px'
+    els.body.appendChild(list)
+
+    function makeRadioRow({ freq, label, unit } = {}) {
+      const row = document.createElement('div')
+      row.className = 'agenda-repeat-row'
+      row.style.display = 'flex'
+      row.style.alignItems = 'center'
+      row.style.gap = '10px'
+
+      const r = document.createElement('input')
+      r.type = 'radio'
+      r.name = 'agendaRepeatFreq'
+      r.checked = local.freq === freq
+
+      const text = document.createElement('div')
+      text.style.flex = '1'
+      text.style.display = 'flex'
+      text.style.gap = '8px'
+      text.style.alignItems = 'center'
+
+      if (freq === 'none') {
+        const t = document.createElement('div')
+        t.textContent = label
+        text.appendChild(t)
+        row.appendChild(r)
+        row.appendChild(text)
+        row.onclick = () => { local.freq = 'none'; render() }
+        return { row }
+      }
+
+      const t1 = document.createElement('div')
+      t1.textContent = 'A cada'
+      const n = document.createElement('input')
+      n.type = 'number'
+      n.min = '1'
+      n.step = '1'
+      n.value = String(local.interval)
+      n.style.width = '64px'
+      const t2 = document.createElement('div')
+      t2.textContent = unit
+      text.appendChild(t1)
+      text.appendChild(n)
+      text.appendChild(t2)
+
+      const updateFromInput = () => {
+        const v = Math.max(1, toIntOrNull(n.value) || 1)
+        local.interval = v
+        n.value = String(v)
+        hint.textContent = describeRepeat(local, base)
+      }
+      n.onchange = updateFromInput
+      n.onblur = updateFromInput
+
+      row.appendChild(r)
+      row.appendChild(text)
+      row.onclick = (ev) => {
+        if (ev && ev.target === n) return
+        local.freq = freq
+        render()
+        try { n.focus() } catch {}
+      }
+      return { row, input: n }
+    }
+
+    const noneRow = makeRadioRow({ freq: 'none', label: 'Não repetir' })
+    const dailyRow = makeRadioRow({ freq: 'daily', unit: 'dia' })
+    const weeklyRow = makeRadioRow({ freq: 'weekly', unit: 'semana' })
+    const monthlyRow = makeRadioRow({ freq: 'monthly', unit: 'mês' })
+    const yearlyRow = makeRadioRow({ freq: 'yearly', unit: 'ano' })
+
+    const monthlyExtras = document.createElement('div')
+    monthlyExtras.style.display = 'grid'
+    monthlyExtras.style.gap = '10px'
+    monthlyExtras.style.marginLeft = '28px'
+    const btnDom = document.createElement('button')
+    btnDom.type = 'button'
+    btnDom.className = 'btn-secondary'
+    btnDom.textContent = btnMonthDomLabel
+    const btnNth = document.createElement('button')
+    btnNth.type = 'button'
+    btnNth.className = 'btn-secondary'
+    btnNth.textContent = btnMonthNthLabel
+    const btnCustom = document.createElement('button')
+    btnCustom.type = 'button'
+    btnCustom.className = 'btn-secondary'
+    btnCustom.textContent = 'Selecionar datas para repetir'
+    monthlyExtras.appendChild(btnDom)
+    monthlyExtras.appendChild(btnNth)
+    monthlyExtras.appendChild(btnCustom)
+
+    const customWrap = document.createElement('div')
+    customWrap.style.display = 'none'
+    customWrap.style.marginTop = '10px'
+    customWrap.style.borderTop = '1px solid #1f2937'
+    customWrap.style.paddingTop = '10px'
+    const customHead = document.createElement('div')
+    customHead.style.color = 'var(--muted)'
+    customHead.style.marginBottom = '8px'
+    customHead.textContent = 'Datas para repetir'
+    const customRow = document.createElement('div')
+    customRow.style.display = 'flex'
+    customRow.style.gap = '10px'
+    customRow.style.alignItems = 'center'
+    const iCustomDate = document.createElement('input')
+    iCustomDate.type = 'date'
+    iCustomDate.value = base || ''
+    const btnAddDate = document.createElement('button')
+    btnAddDate.type = 'button'
+    btnAddDate.className = 'btn-secondary'
+    btnAddDate.textContent = 'Adicionar'
+    customRow.appendChild(iCustomDate)
+    customRow.appendChild(btnAddDate)
+    const customList = document.createElement('div')
+    customList.style.display = 'grid'
+    customList.style.gap = '8px'
+    customList.style.marginTop = '10px'
+    customWrap.appendChild(customHead)
+    customWrap.appendChild(customRow)
+    customWrap.appendChild(customList)
+
+    const durationWrap = document.createElement('div')
+    durationWrap.style.marginTop = '12px'
+    durationWrap.style.borderTop = '1px solid #1f2937'
+    durationWrap.style.paddingTop = '10px'
+    const durationLabel = document.createElement('div')
+    durationLabel.style.color = 'var(--muted)'
+    durationLabel.style.fontSize = '12px'
+    durationLabel.style.marginBottom = '6px'
+    durationLabel.textContent = 'Duração (qtd. ocorrências)'
+    const iDuration = document.createElement('input')
+    iDuration.type = 'number'
+    iDuration.min = '1'
+    iDuration.step = '1'
+    iDuration.value = String(local.count)
+    iDuration.style.width = '140px'
+    durationWrap.appendChild(durationLabel)
+    durationWrap.appendChild(iDuration)
+
+    function renderCustomList() {
+      customList.innerHTML = ''
+      const set = new Set((Array.isArray(local.customDates) ? local.customDates : []).map(x => String(x).slice(0, 10)).filter(Boolean))
+      set.add(base)
+      const arr = Array.from(set).filter(Boolean).sort()
+      local.customDates = arr
+      arr.forEach(dt => {
+        const row = document.createElement('div')
+        row.style.display = 'flex'
+        row.style.alignItems = 'center'
+        row.style.justifyContent = 'space-between'
+        row.style.gap = '10px'
+        const t = document.createElement('div')
+        t.textContent = dt
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'btn-secondary'
+        b.textContent = 'Remover'
+        b.onclick = () => {
+          local.customDates = local.customDates.filter(x => String(x) !== String(dt))
+          renderCustomList()
+        }
+        row.appendChild(t)
+        row.appendChild(b)
+        customList.appendChild(row)
+      })
+    }
+
+    btnAddDate.onclick = () => {
+      const v = String(iCustomDate.value || '').slice(0, 10)
+      if (!v) return
+      local.customDates = Array.from(new Set([...(local.customDates || []), v])).sort()
+      renderCustomList()
+    }
+
+    btnDom.onclick = () => { local.freq = 'monthly'; local.monthlyMode = 'dayOfMonth'; render() }
+    btnNth.onclick = () => { local.freq = 'monthly'; local.monthlyMode = 'nthWeekday'; render() }
+    btnCustom.onclick = () => { local.freq = 'custom'; render() }
+
+    function render() {
+      noneRow.row.querySelector('input[type="radio"]').checked = local.freq === 'none'
+      dailyRow.row.querySelector('input[type="radio"]').checked = local.freq === 'daily'
+      weeklyRow.row.querySelector('input[type="radio"]').checked = local.freq === 'weekly'
+      monthlyRow.row.querySelector('input[type="radio"]').checked = local.freq === 'monthly'
+      yearlyRow.row.querySelector('input[type="radio"]').checked = local.freq === 'yearly'
+      monthlyExtras.style.display = (local.freq === 'monthly') ? 'grid' : 'none'
+      customWrap.style.display = (local.freq === 'custom') ? 'block' : 'none'
+      durationWrap.style.display = (local.freq === 'custom' || local.freq === 'none') ? 'none' : 'block'
+      btnDom.classList.toggle('active', local.freq === 'monthly' && local.monthlyMode === 'dayOfMonth')
+      btnNth.classList.toggle('active', local.freq === 'monthly' && local.monthlyMode === 'nthWeekday')
+      hint.textContent = (local.freq === 'none') ? 'Este evento não se repete.' : describeRepeat(local, base)
+      renderCustomList()
+    }
+
+    list.appendChild(noneRow.row)
+    list.appendChild(dailyRow.row)
+    list.appendChild(weeklyRow.row)
+    list.appendChild(monthlyRow.row)
+    list.appendChild(monthlyExtras)
+    list.appendChild(yearlyRow.row)
+    els.body.appendChild(customWrap)
+    els.body.appendChild(durationWrap)
+
+    els.btnOk.onclick = () => {
+      const nextCount = Math.max(1, toIntOrNull(iDuration.value) || local.count || 12)
+      local.count = nextCount
+      const v = {
+        freq: local.freq,
+        interval: local.interval,
+        monthlyMode: local.monthlyMode,
+        count: local.count,
+        customDates: local.customDates
+      }
+      els.backdrop.classList.remove('open')
+      if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+      els.keyHandler = null
+      const r = els.resolve
+      els.resolve = null
+      if (r) r(v)
+    }
+    els.btnCancel.onclick = () => {
+      els.backdrop.classList.remove('open')
+      if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+      els.keyHandler = null
+      const r = els.resolve
+      els.resolve = null
+      if (r) r(null)
+    }
+
+    render()
+    els.backdrop.classList.add('open')
+    els.btnCancel.focus()
+    return new Promise(resolve => {
+      els.resolve = resolve
+      els.keyHandler = (ev) => {
+        if (ev.key === 'Escape') {
+          ev.preventDefault()
+          const r = els.resolve
+          els.resolve = null
+          els.backdrop.classList.remove('open')
+          if (els.keyHandler) window.removeEventListener('keydown', els.keyHandler)
+          els.keyHandler = null
+          if (r) r(null)
+        }
+      }
+      window.addEventListener('keydown', els.keyHandler)
+    })
+  }
+
+  btnRepeatPick.onclick = async () => {
+    if (selectedEventId) {
+      showStatus('Para repetir, crie um novo evento.', 'error')
+      return
+    }
+    const isOpen = repeatPanel.style.display !== 'none'
+    if (isOpen) {
+      repeatPanel.style.display = 'none'
+      return
+    }
+    renderRepeatInline()
+    repeatPanel.style.display = ''
+  }
+
+  btnSalvar.onclick = async () => {
+    const dataTxt = String(iData.value || '').trim()
+    if (!dataTxt) { showStatus('Informe a data.', 'error'); return }
+    const dataVal = parseBrDateToIso(dataTxt)
+    if (!dataVal) { showStatus('Data inválida.', 'error'); return }
+    const descVal = String(iDesc.value || '').trim()
+    if (!descVal) { showStatus('Informe a descrição.', 'error'); return }
+
+    try {
+      if (selectedEventId) {
+        const full = await loadRowById(selectedEventId)
+        const ctrl = toIntOrNull(full?.id_controle) || toIntOrNull(selectedEventControle)
+        const applyAll = await maybeAskApplyAll(ctrl)
+        const payload = { data: dataVal || null, descricao: descVal || null }
+
+        if (applyAll && ctrl) {
+          const payloadAll = { descricao: descVal || null }
+          await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, payloadAll)
+          await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null })
+        } else {
+          await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, payload)
+        }
+        showStatus('Salvo.', 'success')
+        const d = parseIsoDate(dataVal) || new Date()
+        selectedDate = d
+        selectedDate.setHours(0, 0, 0, 0)
+        anchorDate = new Date(selectedDate.getTime())
+        clearSelection()
+        await refresh()
+        renderEventsList()
+        return
+      }
+
+      const ctrl = await nextControle()
+      const dates = buildRepeatDates(dataVal, repeatState)
+      const payloads = dates.map(dt => ({
+        data: dt,
+        descricao: descVal || null,
+        id_controle: ctrl
+      }))
+      if (!payloads.length) { showStatus('Data inválida.', 'error'); return }
+      await apiCreate(AGENDA_TABLE, payloads)
+      showStatus('Salvo.', 'success')
+      const d = parseIsoDate(payloads[0].data) || new Date()
+      selectedDate = d
+      selectedDate.setHours(0, 0, 0, 0)
+      anchorDate = new Date(selectedDate.getTime())
+      iDesc.value = ''
+      repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
+      renderRepeatSummary()
+      clearSelection()
+      await refresh()
+      renderEventsList()
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    }
+  }
+
+  btnExcluir.onclick = async () => {
+    if (!selectedEventId) return
+    const ok = await confirmModal({ title: 'Confirmar exclusão', message: 'Excluir evento?', confirmText: 'Excluir', cancelText: 'Cancelar', danger: true })
+    if (!ok) return
+    try {
+      const full = await loadRowById(selectedEventId)
+      const ctrl = toIntOrNull(full?.id_controle) || toIntOrNull(selectedEventControle)
+      const applyAll = await maybeAskApplyAll(ctrl)
+      if (applyAll && ctrl) {
+        await apiDeleteWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` })
+      } else {
+        await apiDelete(AGENDA_TABLE, 'id', selectedEventId)
+      }
+      showStatus('Excluído.', 'success')
+      clearSelection()
+      await refresh()
+      renderEventsList()
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    }
+  }
+
+  btnExcluir.disabled = true
+  iData.value = brDate(selectedDate)
+
+  btnDia.onclick = () => { viewMode = 'day'; anchorDate = new Date(selectedDate.getTime()); setActiveView(); refresh().catch(e => showStatus(String(e?.message || e), 'error')) }
+  btnSemana.onclick = () => { viewMode = 'week'; anchorDate = new Date(selectedDate.getTime()); setActiveView(); refresh().catch(e => showStatus(String(e?.message || e), 'error')) }
+  btnMes.onclick = () => { viewMode = 'month'; anchorDate = new Date(selectedDate.getTime()); setActiveView(); refresh().catch(e => showStatus(String(e?.message || e), 'error')) }
+
+  btnToday.onclick = () => {
+    selectedDate = new Date()
+    selectedDate.setHours(0, 0, 0, 0)
+    anchorDate = new Date(selectedDate.getTime())
+    if (!selectedEventId) { iData.value = brDate(selectedDate); renderRepeatSummary() }
+    refresh().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
+  btnPrev.onclick = () => {
+    if (viewMode === 'month') anchorDate = addMonths(anchorDate, -1)
+    else if (viewMode === 'week') anchorDate = addDays(anchorDate, -7)
+    else anchorDate = addDays(anchorDate, -1)
+    if (viewMode === 'day') selectedDate = new Date(anchorDate.getTime())
+    if (viewMode === 'day' && !selectedEventId) { iData.value = brDate(selectedDate); renderRepeatSummary() }
+    refresh().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
+  btnNext.onclick = () => {
+    if (viewMode === 'month') anchorDate = addMonths(anchorDate, 1)
+    else if (viewMode === 'week') anchorDate = addDays(anchorDate, 7)
+    else anchorDate = addDays(anchorDate, 1)
+    if (viewMode === 'day') selectedDate = new Date(anchorDate.getTime())
+    if (viewMode === 'day' && !selectedEventId) { iData.value = brDate(selectedDate); renderRepeatSummary() }
+    refresh().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
+
+  iData.oninput = () => {
+    const next = formatBrDateInput(iData.value)
+    if (iData.value !== next) iData.value = next
+  }
+  iData.onfocus = () => {
+    const dp = ensureAgendaDatePicker()
+    dp.open(iData)
+  }
+  iData.onclick = () => {
+    const dp = ensureAgendaDatePicker()
+    dp.open(iData)
+  }
+  iData.onkeydown = (ev) => {
+    if (ev.key === 'Escape') {
+      const dp = ensureAgendaDatePicker()
+      dp.close()
+    }
+  }
+  iData.onchange = () => {
+    const d = parseBrDate(iData.value)
+    if (d && !selectedEventId) {
+      selectedDate = new Date(d.getTime())
+      selectedDate.setHours(0, 0, 0, 0)
+      anchorDate = new Date(selectedDate.getTime())
+      refresh().catch(e => showStatus(String(e?.message || e), 'error'))
+    }
+    renderRepeatSummary()
+    renderRepeatInline()
+  }
+  renderRepeatSummary()
+  renderRepeatInline()
+  refresh().catch(e => showStatus(String(e?.message || e), 'error'))
 }
 
 

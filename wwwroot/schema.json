@@ -85,6 +85,12 @@
       "label": "Círculo de Oração",
       "pk": "id",
       "fields": []
+    },
+    {
+      "name": "agenda",
+      "label": "Agenda",
+      "pk": "id",
+      "fields": []
     }
   ]
 }
