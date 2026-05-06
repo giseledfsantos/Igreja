@@ -5423,6 +5423,18 @@ function renderAgendaScreen(schema, table) {
   }
 
   const AGENDA_TABLE = 'agenda'
+  const CARGOS_INTERNOS_TABLE = 'cargos_internos'
+  const MEMBROS_CARGOS_INTERNOS_TABLE = 'membros_cargos_internos'
+  const MEMBROS_TABLE = 'membros'
+
+  function pickKey(obj, keys) {
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return k
+    return keys[0]
+  }
+  function normalizeTextLocal(s) {
+    const v = String(s ?? '').toLowerCase().trim()
+    try { return v.normalize('NFD').replace(/\p{Diacritic}/gu, '') } catch { return v }
+  }
 
   function pad2(n) { return String(n).padStart(2, '0') }
   function isoDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
@@ -5545,6 +5557,14 @@ function renderAgendaScreen(schema, table) {
     return max + 1
   }
 
+  const topTabs = document.createElement('div')
+  topTabs.className = 'subtabs'
+  const btnTabAgenda = document.createElement('button'); btnTabAgenda.className = 'subtab active'; btnTabAgenda.textContent = 'Agenda'
+  const btnTabEscala = document.createElement('button'); btnTabEscala.className = 'subtab'; btnTabEscala.textContent = 'Escala'
+  topTabs.appendChild(btnTabAgenda)
+  topTabs.appendChild(btnTabEscala)
+  screens.appendChild(topTabs)
+
   const card = document.createElement('section')
   card.className = 'card'
   const h = document.createElement('h2')
@@ -5584,6 +5604,20 @@ function renderAgendaScreen(schema, table) {
 
   rowDataHora.appendChild(fData)
   rowDataHora.appendChild(fHora)
+
+  const fEscala = document.createElement('div'); fEscala.className = 'field'
+  fEscala.style.width = '110px'
+  fEscala.style.display = 'flex'
+  fEscala.style.flexDirection = 'column'
+  fEscala.style.alignItems = 'center'
+  const lEscala = document.createElement('label'); lEscala.textContent = 'Escala'
+  lEscala.style.width = '100%'
+  lEscala.style.textAlign = 'center'
+  const iEscala = document.createElement('input')
+  iEscala.type = 'checkbox'
+  fEscala.appendChild(lEscala); fEscala.appendChild(iEscala)
+
+  rowDataHora.appendChild(fEscala)
 
   const fDesc = document.createElement('div'); fDesc.className = 'field'
   const lDesc = document.createElement('label'); lDesc.textContent = 'Descrição'
@@ -5691,8 +5725,140 @@ function renderAgendaScreen(schema, table) {
   eventsWrap.className = 'agenda-events'
   cardCal.appendChild(eventsWrap)
 
+  const cardEscala = document.createElement('section')
+  cardEscala.className = 'card'
+  cardEscala.style.display = 'none'
+  const hEscala = document.createElement('h2')
+  hEscala.textContent = 'Escala'
+  cardEscala.appendChild(hEscala)
+
+  function createChecklistField(labelText, onChange) {
+    const wrap = document.createElement('div')
+    wrap.className = 'field'
+    const label = document.createElement('label')
+    label.textContent = labelText
+    const details = document.createElement('details')
+    details.className = 'checklist'
+    const summary = document.createElement('summary')
+    summary.textContent = 'Selecionar...'
+    const items = document.createElement('div')
+    items.className = 'checklist-items'
+    details.appendChild(summary)
+    details.appendChild(items)
+    wrap.appendChild(label)
+    wrap.appendChild(details)
+
+    let options = []
+    let selected = new Set()
+
+    function updateSummary() {
+      if (!options.length) { summary.textContent = 'Sem opções'; return }
+      if (!selected.size) { summary.textContent = 'Selecionar...'; return }
+      const labels = options
+        .filter(o => selected.has(String(o.value)))
+        .map(o => o.label)
+        .slice(0, 2)
+      summary.textContent = labels.join(', ') + (selected.size > 2 ? ` (+${selected.size - 2})` : '')
+    }
+
+    function setOptions(nextOptions) {
+      options = Array.isArray(nextOptions) ? nextOptions : []
+      items.innerHTML = ''
+      options.forEach(opt => {
+        const row = document.createElement('label')
+        row.className = 'checklist-item'
+        row.dataset.value = String(opt.value)
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.value = String(opt.value)
+        cb.checked = selected.has(cb.value)
+        cb.onchange = () => {
+          if (cb.checked) selected.add(cb.value)
+          else selected.delete(cb.value)
+          updateSummary()
+          if (typeof onChange === 'function') onChange()
+        }
+        const t = document.createElement('span')
+        t.textContent = opt.label
+        row.appendChild(cb)
+        row.appendChild(t)
+        items.appendChild(row)
+      })
+      updateSummary()
+    }
+
+    function setSelected(values) {
+      selected = new Set((values || []).map(v => String(v)))
+      items.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = selected.has(String(cb.value)) })
+      updateSummary()
+    }
+
+    function getSelected() {
+      return Array.from(selected.values())
+    }
+
+    return { wrap, setOptions, setSelected, getSelected }
+  }
+
+  const escalaHeadRow = document.createElement('div')
+  escalaHeadRow.style.display = 'flex'
+  escalaHeadRow.style.gap = '12px'
+  escalaHeadRow.style.flexWrap = 'wrap'
+  escalaHeadRow.style.alignItems = 'flex-end'
+
+  const fMesEscala = document.createElement('div'); fMesEscala.className = 'field'
+  fMesEscala.style.width = '180px'
+  const lMesEscala = document.createElement('label'); lMesEscala.textContent = 'Mês'
+  const iMesEscala = document.createElement('input')
+  iMesEscala.type = 'month'
+  fMesEscala.appendChild(lMesEscala); fMesEscala.appendChild(iMesEscala)
+  escalaHeadRow.appendChild(fMesEscala)
+
+  let escalaEventsAll = []
+  let escalaMembersAll = []
+  let escalaAssignments = new Map()
+  let escalaCargoId = null
+  let escalaMciKeys = null
+
+  const escalaEventosField = createChecklistField('Eventos (Escala)', () => {
+    pruneAssignments()
+    renderEscalaGrid()
+  })
+  const escalaMembrosField = createChecklistField('Membros (Obreiro de Escala)', () => {
+    pruneAssignments()
+    renderEscalaGrid()
+  })
+
+  const escalaActions = document.createElement('div')
+  escalaActions.className = 'actions'
+  escalaActions.style.justifyContent = 'flex-end'
+  const btnGerarEscala = document.createElement('button')
+  btnGerarEscala.type = 'button'
+  btnGerarEscala.className = 'btn-secondary'
+  btnGerarEscala.textContent = 'Gerar Escala'
+  const btnGerarImagemEscala = document.createElement('button')
+  btnGerarImagemEscala.type = 'button'
+  btnGerarImagemEscala.className = 'btn-secondary'
+  btnGerarImagemEscala.textContent = 'Gerar Imagem'
+  escalaActions.appendChild(btnGerarEscala)
+  escalaActions.appendChild(btnGerarImagemEscala)
+  escalaActions.style.marginBottom = '12px'
+
+  const escalaWrapTable = document.createElement('div')
+  escalaWrapTable.className = 'ebd-wrap'
+  const escalaTable = document.createElement('table')
+  escalaTable.className = 'ebd-table'
+  escalaWrapTable.appendChild(escalaTable)
+
+  cardEscala.appendChild(escalaHeadRow)
+  cardEscala.appendChild(escalaEventosField.wrap)
+  cardEscala.appendChild(escalaMembrosField.wrap)
+  cardEscala.appendChild(escalaActions)
+  cardEscala.appendChild(escalaWrapTable)
+
   screens.appendChild(card)
   screens.appendChild(cardCal)
+  screens.appendChild(cardEscala)
 
   let viewMode = 'month'
   let selectedDate = new Date()
@@ -5703,6 +5869,7 @@ function renderAgendaScreen(schema, table) {
   let selectedEventControle = null
   let repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
   let agendaHasHora = null
+  let agendaHasEscala = null
   const weekImageLayout = {
     title: 'Agenda da Semana',
     church: 'IEADM-ITAPEVA',
@@ -5720,6 +5887,529 @@ function renderAgendaScreen(schema, table) {
     emptyCardBorder: 'rgba(51,65,85,0.7)',
     crossColor: 'rgba(203,213,225,0.18)',
     accentBar: 'rgba(134,239,172,0.95)'
+  }
+
+  function setTopTab(next) {
+    const t = String(next || 'agenda')
+    btnTabAgenda.classList.toggle('active', t === 'agenda')
+    btnTabEscala.classList.toggle('active', t === 'escala')
+    card.style.display = t === 'agenda' ? '' : 'none'
+    cardCal.style.display = t === 'agenda' ? '' : 'none'
+    cardEscala.style.display = t === 'escala' ? '' : 'none'
+    if (t === 'escala') {
+      loadEscalaForMonth().catch(e => showStatus(String(e?.message || e), 'error'))
+    }
+  }
+  btnTabAgenda.onclick = () => setTopTab('agenda')
+  btnTabEscala.onclick = () => setTopTab('escala')
+
+  function monthStartEndIso(yyyyMm) {
+    const v = String(yyyyMm || '').trim()
+    const m = v.match(/^(\d{4})-(\d{2})$/)
+    if (!m) return null
+    const y = Number(m[1])
+    const mm = Number(m[2])
+    if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return null
+    const start = new Date(y, mm - 1, 1)
+    const end = new Date(y, mm, 0)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(0, 0, 0, 0)
+    return { startIso: isoDate(start), endIso: isoDate(end), y, m: mm }
+  }
+
+  async function ensureEscalaCargoId() {
+    if (escalaCargoId) return escalaCargoId
+    let rows = []
+    try {
+      rows = await apiGet(CARGOS_INTERNOS_TABLE, { select: '*' })
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+      rows = []
+    }
+    const list = Array.isArray(rows) ? rows : []
+    if (!list.length) return null
+    const sample = list[0] || {}
+    const idKey = pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'id', 'codigo'])
+    const labelCandidates = ['nome', 'descricao', 'cargo_interno', 'cargo', 'titulo', 'label', 'name']
+    const labelKey = labelCandidates.find(k => Object.prototype.hasOwnProperty.call(sample, k))
+      || Object.keys(sample || {}).find(k => typeof sample?.[k] === 'string')
+      || labelCandidates[0]
+
+    const target = normalizeTextLocal('OBREIRO DE ESCALA')
+    const found = list.find(r => normalizeTextLocal(String(r?.[labelKey] ?? '')).includes(target))
+    escalaCargoId = found ? String(found?.[idKey] ?? '') : null
+    return escalaCargoId
+  }
+
+  async function ensureEscalaMciKeys() {
+    if (escalaMciKeys) return escalaMciKeys
+    try {
+      const rows = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, { select: '*', limit: 1 })
+      const sample = (Array.isArray(rows) ? rows : [])[0] || {}
+      escalaMciKeys = {
+        membroKey: pickKey(sample, ['id_membro', 'membro_id', 'membros_id', 'idMembro']),
+        cargoKey: pickKey(sample, ['id_cargos_internos', 'id_cargo_interno', 'cargo_interno_id', 'id_cargo', 'cargo_id'])
+      }
+      return escalaMciKeys
+    } catch {
+      escalaMciKeys = { membroKey: 'id_membro', cargoKey: 'id_cargos_internos' }
+      return escalaMciKeys
+    }
+  }
+
+  function eventLabel(r) {
+    const iso = String(r?.data ?? '').slice(0, 10)
+    const d = parseIsoDate(iso)
+    const dt = d ? brDate(d) : iso
+    const hr = String(r?.hora ?? '').slice(0, 5)
+    const desc = String(r?.descricao ?? '').trim()
+    const left = hr ? `${dt} ${hr}` : dt
+    return desc ? `${left} - ${desc}` : left
+  }
+  function firstName(full) {
+    const v = String(full || '').trim()
+    if (!v) return ''
+    return v.split(/\s+/)[0] || v
+  }
+
+  async function loadEscalaForMonth() {
+    const ym = String(iMesEscala.value || '').trim()
+    const range = monthStartEndIso(ym)
+    if (!range) return
+
+    let rowsAgenda = []
+    const selectAgenda = () => {
+      const parts = ['id', 'data', 'descricao']
+      if (agendaHasHora !== false) parts.push('hora')
+      if (agendaHasEscala !== false) parts.push('escala')
+      return parts.join(',')
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await apiGet(AGENDA_TABLE, { select: selectAgenda(), data: [`gte.${range.startIso}`, `lte.${range.endIso}`], order: agendaHasHora === false ? 'data.asc,id.asc' : 'data.asc,hora.asc,id.asc' })
+        rowsAgenda = Array.isArray(res) ? res : []
+        break
+      } catch (e) {
+        const msg = String(e?.message || e || '')
+        const isSchema = /(column|field|schema)/i.test(msg)
+        const missHora = agendaHasHora !== false && /hora/i.test(msg) && isSchema
+        const missEscala = agendaHasEscala !== false && /escala/i.test(msg) && isSchema
+        if (missHora) agendaHasHora = false
+        if (missEscala) agendaHasEscala = false
+        if (missHora || missEscala) continue
+        throw e
+      }
+    }
+
+    escalaEventsAll = (Array.isArray(rowsAgenda) ? rowsAgenda : [])
+      .filter(r => !!r?.escala)
+      .map(r => ({
+        id: String(r?.id ?? '').trim(),
+        data: String(r?.data ?? '').slice(0, 10),
+        descricao: String(r?.descricao ?? ''),
+        hora: String(r?.hora ?? '').slice(0, 5)
+      }))
+      .filter(r => r.id && r.data)
+
+    escalaEventosField.setOptions(escalaEventsAll.map(r => ({ value: r.id, label: eventLabel(r) })))
+    escalaEventosField.setSelected(escalaEventsAll.map(r => r.id))
+
+    const cargoId = await ensureEscalaCargoId()
+    if (!cargoId) {
+      escalaMembersAll = []
+      escalaMembrosField.setOptions([])
+      escalaMembrosField.setSelected([])
+      showStatus('Cargo interno "Obreiro de Escala" não encontrado.', 'error')
+      pruneAssignments()
+      renderEscalaGrid()
+      return
+    }
+    const keys = await ensureEscalaMciKeys()
+    const rowsMci = await apiGet(MEMBROS_CARGOS_INTERNOS_TABLE, { select: '*', [keys.cargoKey]: `eq.${cargoId}` }).catch(() => [])
+    const membroIds = Array.from(new Set((Array.isArray(rowsMci) ? rowsMci : []).map(r => String(r?.[keys.membroKey] ?? '')).filter(Boolean)))
+    const allMembros = await apiGet(MEMBROS_TABLE, { select: 'id,nome', order: 'nome.asc' }).catch(() => [])
+    const membrosList = Array.isArray(allMembros) ? allMembros : []
+    const setIds = new Set(membroIds)
+    escalaMembersAll = membrosList
+      .map(m => ({ id: String(m?.id ?? '').trim(), nome: firstName(String(m?.nome ?? '').trim()) }))
+      .filter(m => m.id && m.nome && setIds.has(m.id))
+
+    escalaMembrosField.setOptions(escalaMembersAll.map(m => ({ value: m.id, label: m.nome })))
+    escalaMembrosField.setSelected(escalaMembersAll.map(m => m.id))
+
+    pruneAssignments()
+    renderEscalaGrid()
+  }
+
+  function pruneAssignments() {
+    const allowedEvents = new Set(escalaEventosField.getSelected().map(String))
+    const allowedMembers = new Set(escalaMembrosField.getSelected().map(String))
+    const next = new Map()
+    escalaAssignments.forEach((arr, eid) => {
+      const id = String(eid)
+      if (!allowedEvents.has(id)) return
+      const filtered = (Array.isArray(arr) ? arr : []).map(x => String(x)).filter(x => allowedMembers.has(x))
+      next.set(id, filtered.slice(0, 3))
+    })
+    escalaAssignments = next
+  }
+
+  function renderEscalaGrid() {
+    const selectedEventIds = new Set(escalaEventosField.getSelected().map(String))
+    const selectedMemberIds = new Set(escalaMembrosField.getSelected().map(String))
+    const memberOptions = escalaMembersAll.filter(m => selectedMemberIds.has(m.id))
+    const events = escalaEventsAll
+      .filter(e => selectedEventIds.has(e.id))
+      .slice()
+      .sort((a, b) => {
+        const r = String(a.data).localeCompare(String(b.data))
+        if (r !== 0) return r
+        return String(a.hora || '').localeCompare(String(b.hora || ''))
+      })
+
+    escalaTable.innerHTML = ''
+    const thead = document.createElement('thead')
+    const trh = document.createElement('tr')
+    ;['Data', 'Evento', 'Membro 1', 'Membro 2', 'Membro 3'].forEach(t => {
+      const th = document.createElement('th')
+      th.textContent = t
+      trh.appendChild(th)
+    })
+    thead.appendChild(trh)
+    escalaTable.appendChild(thead)
+
+    const tbody = document.createElement('tbody')
+    events.forEach(ev => {
+      const tr = document.createElement('tr')
+      const tdData = document.createElement('td')
+      const d = parseIsoDate(ev.data)
+      tdData.textContent = d ? brDate(d) : ev.data
+      const tdEv = document.createElement('td')
+      tdEv.style.textAlign = 'left'
+      tdEv.textContent = (ev.hora ? `${ev.hora} - ` : '') + String(ev.descricao || '')
+      tr.appendChild(tdData)
+      tr.appendChild(tdEv)
+
+      const current = Array.isArray(escalaAssignments.get(ev.id)) ? escalaAssignments.get(ev.id) : []
+      while (current.length < 3) current.push('')
+      escalaAssignments.set(ev.id, current.slice(0, 3))
+
+      function makeSelect(slot) {
+        const sel = document.createElement('select')
+        const empty = document.createElement('option')
+        empty.value = ''
+        empty.textContent = ''
+        sel.appendChild(empty)
+        memberOptions.forEach(m => {
+          const o = document.createElement('option')
+          o.value = m.id
+          o.textContent = m.nome
+          sel.appendChild(o)
+        })
+        sel.value = String(current[slot] || '')
+        sel.dataset.prev = sel.value
+        sel.onchange = () => {
+          const next = String(sel.value || '')
+          const prev = String(sel.dataset.prev || '')
+          const arr = Array.isArray(escalaAssignments.get(ev.id)) ? escalaAssignments.get(ev.id) : ['', '', '']
+          if (next && arr.some((x, idx) => idx !== slot && String(x) === next)) {
+            sel.value = prev
+            showStatus('Evite repetir o mesmo membro no mesmo evento.', 'error')
+            return
+          }
+          arr[slot] = next
+          escalaAssignments.set(ev.id, arr)
+          sel.dataset.prev = next
+        }
+        return sel
+      }
+
+      for (let i = 0; i < 3; i++) {
+        const td = document.createElement('td')
+        td.appendChild(makeSelect(i))
+        tr.appendChild(td)
+      }
+      tbody.appendChild(tr)
+    })
+    escalaTable.appendChild(tbody)
+  }
+
+  function shuffled(arr) {
+    const a = (arr || []).slice()
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const t = a[i]; a[i] = a[j]; a[j] = t
+    }
+    return a
+  }
+
+  function generateAssignmentsRandom() {
+    const selectedEventIds = new Set(escalaEventosField.getSelected().map(String))
+    const selectedMemberIds = escalaMembrosField.getSelected().map(String).filter(Boolean)
+    const events = escalaEventsAll
+      .filter(e => selectedEventIds.has(e.id))
+      .slice()
+      .sort((a, b) => String(a.data).localeCompare(String(b.data)))
+
+    const byDay = new Map()
+    events.forEach(ev => {
+      const day = String(ev.data || '')
+      if (!day) return
+      if (!byDay.has(day)) byDay.set(day, [])
+      byDay.get(day).push(ev)
+    })
+
+    let bag = shuffled(selectedMemberIds)
+    let idx = 0
+    const usedGlobal = new Set()
+
+    function nextMember(excludeSet) {
+      for (let tries = 0; tries < selectedMemberIds.length + 6; tries++) {
+        if (idx >= bag.length) { bag = shuffled(selectedMemberIds); idx = 0 }
+        const candidate = String(bag[idx++] || '')
+        if (!candidate) continue
+        if (excludeSet.has(candidate)) continue
+        if (!usedGlobal.has(candidate)) { usedGlobal.add(candidate); return candidate }
+        if (tries > selectedMemberIds.length / 2) return candidate
+      }
+      return ''
+    }
+
+    escalaAssignments = new Map()
+    Array.from(byDay.keys()).sort().forEach(day => {
+      const picked = []
+      const exclude = new Set()
+      for (let i = 0; i < 3; i++) {
+        const m = nextMember(exclude)
+        if (!m) break
+        picked.push(m)
+        exclude.add(m)
+      }
+      if (picked.length < 3) {
+        while (picked.length < 3 && selectedMemberIds.length) {
+          const m = nextMember(exclude)
+          if (!m) break
+          picked.push(m)
+          exclude.add(m)
+        }
+      }
+      ;(byDay.get(day) || []).forEach(ev => {
+        escalaAssignments.set(ev.id, picked.slice(0, 3))
+      })
+    })
+  }
+
+  async function generateEscalaImage() {
+    const selectedEventIds = new Set(escalaEventosField.getSelected().map(String))
+    const selectedMemberIds = new Set(escalaMembrosField.getSelected().map(String))
+    const memberById = new Map(escalaMembersAll.filter(m => selectedMemberIds.has(m.id)).map(m => [m.id, m.nome]))
+    const events = escalaEventsAll
+      .filter(e => selectedEventIds.has(e.id))
+      .slice()
+      .sort((a, b) => {
+        const r = String(a.data).localeCompare(String(b.data))
+        if (r !== 0) return r
+        return String(a.hora || '').localeCompare(String(b.hora || ''))
+      })
+
+    const canvas = document.createElement('canvas')
+    const W = 1080
+    const H = 1080
+    canvas.width = W
+    canvas.height = H
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas indisponível.')
+
+    function pickWallpaperUrl() {
+      const el = document.querySelector('.wallpaper')
+      if (!el) return ''
+      let bg = ''
+      try { bg = String(window.getComputedStyle(el).backgroundImage || '') } catch { bg = '' }
+      const m = bg.match(/url\((['"]?)(.*?)\1\)/i)
+      return m ? String(m[2] || '') : ''
+    }
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image()
+        try { img.crossOrigin = 'anonymous' } catch {}
+        img.onload = () => resolve(img)
+        img.onerror = () => reject(new Error('Falha ao carregar imagem de fundo.'))
+        img.src = src
+      })
+    }
+    function drawCover(img, x, y, w, h) {
+      const iw = Number(img?.naturalWidth || img?.width || 0)
+      const ih = Number(img?.naturalHeight || img?.height || 0)
+      if (!iw || !ih) return
+      const s = Math.max(w / iw, h / ih)
+      const dw = iw * s
+      const dh = ih * s
+      const dx = x + (w - dw) / 2
+      const dy = y + (h - dh) / 2
+      ctx.drawImage(img, dx, dy, dw, dh)
+    }
+    function roundRect(x, y, w, h, r) {
+      const rr = Math.max(0, Math.min(r, w / 2, h / 2))
+      ctx.beginPath()
+      ctx.moveTo(x + rr, y)
+      ctx.arcTo(x + w, y, x + w, y + h, rr)
+      ctx.arcTo(x + w, y + h, x, y + h, rr)
+      ctx.arcTo(x, y + h, x, y, rr)
+      ctx.arcTo(x, y, x + w, y, rr)
+      ctx.closePath()
+    }
+    function wrapLines(text, maxWidth, maxLines) {
+      const words = String(text || '').split(/\s+/).filter(Boolean)
+      const lines = []
+      let line = ''
+      let truncated = false
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i]
+        const next = line ? `${line} ${w}` : w
+        if (ctx.measureText(next).width <= maxWidth) { line = next; continue }
+        if (line) lines.push(line)
+        line = w
+        if (lines.length >= maxLines) { truncated = true; break }
+      }
+      if (lines.length < maxLines && line) lines.push(line)
+      if (lines.length > maxLines) { lines.length = maxLines; truncated = true }
+      if (truncated && lines.length) {
+        const last = lines[lines.length - 1] || ''
+        let t = last
+        while (t && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1)
+        lines[lines.length - 1] = t ? `${t}…` : '…'
+      }
+      return lines
+    }
+    function brShortNoYear(iso) {
+      const d = parseIsoDate(String(iso || '').slice(0, 10))
+      if (!d) return String(iso || '').slice(0, 10)
+      return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`
+    }
+
+    const bgUrl = pickWallpaperUrl()
+    if (bgUrl) {
+      try {
+        const img = await loadImage(bgUrl)
+        drawCover(img, 0, 0, W, H)
+      } catch {}
+    }
+    const grad = ctx.createLinearGradient(0, 0, 0, H)
+    grad.addColorStop(0, '#1b1604')
+    grad.addColorStop(1, '#000000')
+    ctx.save()
+    ctx.globalAlpha = 0.90
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, W, H)
+    ctx.restore()
+
+    const pad = 56
+    const headerH = 160
+    const cardW = W - pad * 2
+    roundRect(pad, pad, cardW, headerH, 26)
+    ctx.fillStyle = 'rgba(0,0,0,0.70)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(253,224,71,0.55)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    const ym = String(iMesEscala.value || '').trim()
+    const range = monthStartEndIso(ym)
+    const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    const title = range ? `${MONTHS[(range.m || 1) - 1]} / ${range.y}` : ym
+
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = '#fde047'
+    ctx.font = `800 56px ${String(weekImageLayout.fontTitle || 'Segoe UI, Arial, sans-serif')}`
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.fillText('Escala', pad + (cardW / 2), pad + 22)
+    ctx.restore()
+
+    ctx.fillStyle = '#fde68a'
+    ctx.font = `700 34px ${String(weekImageLayout.fontBody || 'Segoe UI, Arial, sans-serif')}`
+    ctx.fillText(title, pad + 28, pad + 92)
+
+    const areaTop = pad + headerH + 18
+    const areaH = H - areaTop - pad
+    const gap = 16
+    const colCount = 2
+    const colW = Math.floor((cardW - gap * (colCount - 1)) / colCount)
+    const lineH = 34
+    const maxTextWidth = colW - 36
+
+    let x = pad
+    let y = areaTop
+    let col = 0
+
+    ctx.font = `700 30px ${String(weekImageLayout.fontTitle || 'Segoe UI, Arial, sans-serif')}`
+    const gold = '#fde047'
+
+    for (const ev of events) {
+      const dt = brShortNoYear(ev.data)
+      const evTitle = `${dt} - ${String(ev.descricao || '')}`
+      const members = (Array.isArray(escalaAssignments.get(ev.id)) ? escalaAssignments.get(ev.id) : [])
+        .map(id => memberById.get(String(id)) || '')
+        .filter(Boolean)
+
+      const linesTitle = wrapLines(evTitle, maxTextWidth, 2)
+      const linesMembers = members.map(n => `• ${n}`)
+      const blockLines = linesTitle.length + Math.max(1, linesMembers.length)
+      const blockH = blockLines * lineH + 14
+
+      if (y + blockH > areaTop + areaH) {
+        col += 1
+        if (col >= colCount) break
+        x = pad + col * (colW + gap)
+        y = areaTop
+      }
+
+      roundRect(x, y, colW, blockH, 18)
+      ctx.fillStyle = 'rgba(0,0,0,0.62)'
+      ctx.fill()
+    ctx.strokeStyle = 'rgba(253,224,71,0.35)'
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      let yy = y + 14
+      ctx.fillStyle = gold
+      ctx.font = `800 30px ${String(weekImageLayout.fontTitle || 'Segoe UI, Arial, sans-serif')}`
+      linesTitle.forEach(t => {
+        ctx.fillText(t, x + 18, yy)
+        yy += lineH
+      })
+
+      ctx.fillStyle = '#fff7ed'
+      ctx.font = `600 30px ${String(weekImageLayout.fontBody || 'Segoe UI, Arial, sans-serif')}`
+      if (!linesMembers.length) {
+        ctx.fillStyle = 'rgba(253,230,138,0.75)'
+        ctx.fillText('Sem membros', x + 18, yy)
+        yy += lineH
+      } else {
+        linesMembers.forEach(t => {
+          ctx.fillText(t, x + 18, yy)
+          yy += lineH
+        })
+      }
+
+      y += blockH + gap
+    }
+
+    const blob = await new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Falha ao gerar imagem.'))), 'image/png', 1)
+      } catch (e) { reject(e) }
+    })
+
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `escala-${String(iMesEscala.value || '').replaceAll('-', '')}.png`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => { try { URL.revokeObjectURL(url) } catch {} }, 1500)
+    showStatus('Imagem gerada.', 'success')
   }
 
   function weekdayPt(weekdayIdx) {
@@ -6425,6 +7115,7 @@ function renderAgendaScreen(schema, table) {
     const d = parseIsoDate(String(row?.data ?? '').slice(0, 10))
     iData.value = d ? brDate(d) : ''
     iHora.value = String(row?.hora ?? '').slice(0, 5)
+    iEscala.checked = !!row?.escala
     iDesc.value = String(row?.descricao ?? '')
     repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
     renderRepeatSummary()
@@ -6433,23 +7124,29 @@ function renderAgendaScreen(schema, table) {
 
   async function loadRowById(id) {
     const baseParams = { id: `eq.${id}`, limit: 1 }
-    if (agendaHasHora === false) {
-      const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: 'id,data,descricao,id_controle' })
-      return Array.isArray(rows) ? (rows[0] || null) : null
+    const select = () => {
+      const parts = ['id', 'data', 'descricao']
+      if (agendaHasHora !== false) parts.push('hora')
+      if (agendaHasEscala !== false) parts.push('escala')
+      parts.push('id_controle')
+      return parts.join(',')
     }
-    try {
-      const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: 'id,data,descricao,hora,id_controle' })
-      agendaHasHora = true
-      return Array.isArray(rows) ? (rows[0] || null) : null
-    } catch (e) {
-      const msg = String(e?.message || e || '')
-      if (/hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
-        agendaHasHora = false
-        const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: 'id,data,descricao,id_controle' })
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: select() })
         return Array.isArray(rows) ? (rows[0] || null) : null
+      } catch (e) {
+        const msg = String(e?.message || e || '')
+        const isSchema = /(column|field|schema)/i.test(msg)
+        const missHora = agendaHasHora !== false && /hora/i.test(msg) && isSchema
+        const missEscala = agendaHasEscala !== false && /escala/i.test(msg) && isSchema
+        if (missHora) agendaHasHora = false
+        if (missEscala) agendaHasEscala = false
+        if (missHora || missEscala) continue
+        throw e
       }
-      throw e
     }
+    return null
   }
 
   function updateNavTitle() {
@@ -6654,25 +7351,33 @@ function renderAgendaScreen(schema, table) {
       end = isoDate(anchorDate)
     }
     try {
-      if (agendaHasHora === false) {
-        const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,id.asc' })
-        agendaRows = Array.isArray(res) ? res : []
-      } else {
+      const select = () => {
+        const parts = ['id', 'data', 'descricao']
+        if (agendaHasHora !== false) parts.push('hora')
+        if (agendaHasEscala !== false) parts.push('escala')
+        parts.push('id_controle')
+        return parts.join(',')
+      }
+      const order = () => (agendaHasHora === false ? 'data.asc,id.asc' : 'data.asc,hora.asc,id.asc')
+      let ok = false
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,hora,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,hora.asc,id.asc' })
-          agendaHasHora = true
+          const res = await apiGet(AGENDA_TABLE, { select: select(), data: [`gte.${start}`, `lte.${end}`], order: order() })
           agendaRows = Array.isArray(res) ? res : []
+          ok = true
+          break
         } catch (e) {
           const msg = String(e?.message || e || '')
-          if (/hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
-            agendaHasHora = false
-            const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,id.asc' })
-            agendaRows = Array.isArray(res) ? res : []
-          } else {
-            throw e
-          }
+          const isSchema = /(column|field|schema)/i.test(msg)
+          const missHora = agendaHasHora !== false && /hora/i.test(msg) && isSchema
+          const missEscala = agendaHasEscala !== false && /escala/i.test(msg) && isSchema
+          if (missHora) agendaHasHora = false
+          if (missEscala) agendaHasEscala = false
+          if (missHora || missEscala) continue
+          throw e
         }
       }
+      if (!ok) agendaRows = []
     } catch (e) {
       agendaRows = []
       showStatus(String(e?.message || e), 'error')
@@ -7122,6 +7827,7 @@ function renderAgendaScreen(schema, table) {
     if (!dataVal) { showStatus('Data inválida.', 'error'); return }
     const horaVal = normalizeHora(iHora.value)
     if (String(iHora.value || '').trim() && !horaVal) { showStatus('Hora inválida.', 'error'); return }
+    const escalaVal = !!iEscala.checked
     const descVal = String(iDesc.value || '').trim()
     if (!descVal) { showStatus('Informe a descrição.', 'error'); return }
 
@@ -7130,36 +7836,52 @@ function renderAgendaScreen(schema, table) {
         const full = await loadRowById(selectedEventId)
         const ctrl = toIntOrNull(full?.id_controle) || toIntOrNull(selectedEventControle)
         const applyAll = await maybeAskApplyAll(ctrl)
-        const payload = (agendaHasHora === false)
-          ? { data: dataVal || null, descricao: descVal || null }
-          : { data: dataVal || null, descricao: descVal || null, hora: horaVal }
+        const payload = { data: dataVal || null, descricao: descVal || null }
+        if (agendaHasHora !== false) payload.hora = horaVal
+        if (agendaHasEscala !== false) payload.escala = escalaVal
 
         if (applyAll && ctrl) {
-          const payloadAll = (agendaHasHora === false) ? { descricao: descVal || null } : { descricao: descVal || null, hora: horaVal }
+          const payloadAll = { descricao: descVal || null }
+          if (agendaHasHora !== false) payloadAll.hora = horaVal
+          if (agendaHasEscala !== false) payloadAll.escala = escalaVal
           try {
             await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, payloadAll)
             await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null })
           } catch (e) {
             const msg = String(e?.message || e || '')
-            if (agendaHasHora !== false && /hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
-              agendaHasHora = false
-              await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, { descricao: descVal || null })
+            const isSchema = /(column|field|schema)/i.test(msg)
+            const missHora = agendaHasHora !== false && /hora/i.test(msg) && isSchema
+            const missEscala = agendaHasEscala !== false && /escala/i.test(msg) && isSchema
+            if (missHora) agendaHasHora = false
+            if (missEscala) agendaHasEscala = false
+            if (missHora || missEscala) {
+              const payloadAll2 = { descricao: descVal || null }
+              if (agendaHasHora !== false) payloadAll2.hora = horaVal
+              if (agendaHasEscala !== false) payloadAll2.escala = escalaVal
+              await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, payloadAll2)
               await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null })
-            } else {
-              throw e
+              return
             }
+            throw e
           }
         } else {
           try {
             await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, payload)
           } catch (e) {
             const msg = String(e?.message || e || '')
-            if (agendaHasHora !== false && /hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
-              agendaHasHora = false
-              await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null, descricao: descVal || null })
-            } else {
-              throw e
+            const isSchema = /(column|field|schema)/i.test(msg)
+            const missHora = agendaHasHora !== false && /hora/i.test(msg) && isSchema
+            const missEscala = agendaHasEscala !== false && /escala/i.test(msg) && isSchema
+            if (missHora) agendaHasHora = false
+            if (missEscala) agendaHasEscala = false
+            if (missHora || missEscala) {
+              const payload2 = { data: dataVal || null, descricao: descVal || null }
+              if (agendaHasHora !== false) payload2.hora = horaVal
+              if (agendaHasEscala !== false) payload2.escala = escalaVal
+              await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, payload2)
+              return
             }
+            throw e
           }
         }
         showStatus('Salvo.', 'success')
@@ -7178,6 +7900,7 @@ function renderAgendaScreen(schema, table) {
       const payloads = dates.map(dt => {
         const o = { data: dt, descricao: descVal || null, id_controle: ctrl }
         if (agendaHasHora !== false) o.hora = horaVal
+        if (agendaHasEscala !== false) o.escala = escalaVal
         return o
       })
       if (!payloads.length) { showStatus('Data inválida.', 'error'); return }
@@ -7185,9 +7908,18 @@ function renderAgendaScreen(schema, table) {
         await apiCreate(AGENDA_TABLE, payloads)
       } catch (e) {
         const msg = String(e?.message || e || '')
-        if (agendaHasHora !== false && /hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
-          agendaHasHora = false
-          const payloads2 = dates.map(dt => ({ data: dt, descricao: descVal || null, id_controle: ctrl }))
+        const isSchema = /(column|field|schema)/i.test(msg)
+        const missHora = agendaHasHora !== false && /hora/i.test(msg) && isSchema
+        const missEscala = agendaHasEscala !== false && /escala/i.test(msg) && isSchema
+        if (missHora) agendaHasHora = false
+        if (missEscala) agendaHasEscala = false
+        if (missHora || missEscala) {
+          const payloads2 = dates.map(dt => {
+            const o = { data: dt, descricao: descVal || null, id_controle: ctrl }
+            if (agendaHasHora !== false) o.hora = horaVal
+            if (agendaHasEscala !== false) o.escala = escalaVal
+            return o
+          })
           await apiCreate(AGENDA_TABLE, payloads2)
         } else {
           throw e
@@ -7199,6 +7931,7 @@ function renderAgendaScreen(schema, table) {
       selectedDate.setHours(0, 0, 0, 0)
       anchorDate = new Date(selectedDate.getTime())
       iDesc.value = ''
+      iEscala.checked = false
       repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
       renderRepeatSummary()
       clearSelection()
@@ -7303,6 +8036,17 @@ function renderAgendaScreen(schema, table) {
   renderRepeatSummary()
   renderRepeatInline()
   refresh().catch(e => showStatus(String(e?.message || e), 'error'))
+
+  const now = new Date()
+  iMesEscala.value = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`
+  iMesEscala.onchange = () => { loadEscalaForMonth().catch(e => showStatus(String(e?.message || e), 'error')) }
+  btnGerarEscala.onclick = () => {
+    generateAssignmentsRandom()
+    renderEscalaGrid()
+  }
+  btnGerarImagemEscala.onclick = () => {
+    generateEscalaImage().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
 }
 
 
