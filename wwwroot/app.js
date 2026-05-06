@@ -6371,12 +6371,13 @@ function renderAgendaScreen(schema, table) {
           ctx.fillText(title, x + (colW / 2), y + s(20))
           ctx.restore()
 
+          const eventFont = f(32)
           ctx.fillStyle = '#cbd5e1'
-          ctx.font = `600 ${f(28)}px ${fontBody}`
+          ctx.font = `600 ${eventFont}px ${fontBody}`
 
           const maxTextWidth = colW - s(70)
           const startY = y + s(104)
-          const lineH = Math.round(f(32) * lineGap)
+          const lineH = Math.round(eventFont * lineGap)
           const maxLines = Math.max(2, Math.floor((dayH - s(140)) / lineH))
 
           let used = 0
