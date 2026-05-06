@@ -6161,11 +6161,11 @@ function renderAgendaScreen(schema, table) {
       if (!ctx) throw new Error('Canvas indisponível.')
       const S = H / 1920
       const s = (n) => Math.round(Number(n || 0) * S)
-      const F = 1.35
+      const F = 1.55
       const f = (n) => Math.round(Number(n || 0) * S * F)
       const fontTitle = String(weekImageLayout.fontTitle || 'Segoe UI, Arial, sans-serif')
       const fontBody = String(weekImageLayout.fontBody || 'Segoe UI, Arial, sans-serif')
-      const lineGap = 1.28
+      const lineGap = 1.35
 
       function roundRect(x, y, w, h, r) {
         const rr = Math.max(0, Math.min(r, w / 2, h / 2))
@@ -6336,17 +6336,23 @@ function renderAgendaScreen(schema, table) {
         ctx.fillText('Use a Agenda para cadastrar os eventos.', pad + s(28), areaTop + s(86))
       } else {
         const N = days.length
-        const rawH = Math.floor((areaH - gap * Math.max(0, N - 1)) / N)
-        const dayH = Math.max(s(160), Math.min(s(360), rawH))
+        const colCount = 2
+        const rowCount = Math.max(1, Math.ceil(N / colCount))
+        const colW = Math.floor((cardW - gap * (colCount - 1)) / colCount)
+        const rowH = Math.floor((areaH - gap * Math.max(0, rowCount - 1)) / rowCount)
+        const dayH = Math.max(s(200), Math.min(s(420), rowH))
 
         const DOW_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
         for (let i = 0; i < N; i++) {
           const itemDay = days[i]
           const d = itemDay.d
           const list = itemDay.list || []
-          const y = areaTop + i * (dayH + gap)
+          const row = Math.floor(i / colCount)
+          const col = i % colCount
+          const x = pad + col * (colW + gap)
+          const y = areaTop + row * (dayH + gap)
 
-          roundRect(pad, y, cardW, dayH, s(22))
+          roundRect(x, y, colW, dayH, s(22))
           ctx.fillStyle = weekImageLayout.dayCardBg
           ctx.fill()
           ctx.strokeStyle = weekImageLayout.dayCardBorder
@@ -6354,21 +6360,24 @@ function renderAgendaScreen(schema, table) {
           ctx.stroke()
 
           ctx.fillStyle = weekImageLayout.accentBar
-          roundRect(pad + s(14), y + s(16), s(10), dayH - s(32), s(8))
+          roundRect(x + s(14), y + s(16), s(10), dayH - s(32), s(8))
           ctx.fill()
 
-          ctx.fillStyle = '#e5e7eb'
-          ctx.font = `800 ${f(34)}px ${fontTitle}`
           const title = `${DOW_FULL[d.getDay()]} • ${brShortDate(d)}`
-          ctx.fillText(title, pad + s(34), y + s(20))
+          ctx.save()
+          ctx.textAlign = 'center'
+          ctx.fillStyle = '#93c5fd'
+          ctx.font = `800 ${f(34)}px ${fontTitle}`
+          ctx.fillText(title, x + (colW / 2), y + s(20))
+          ctx.restore()
 
           ctx.fillStyle = '#cbd5e1'
           ctx.font = `600 ${f(28)}px ${fontBody}`
 
-          const maxTextWidth = cardW - s(70)
-          const startY = y + s(92)
+          const maxTextWidth = colW - s(70)
+          const startY = y + s(104)
           const lineH = Math.round(f(32) * lineGap)
-          const maxLines = Math.max(2, Math.floor((dayH - s(120)) / lineH))
+          const maxLines = Math.max(2, Math.floor((dayH - s(140)) / lineH))
 
           let used = 0
           for (let k = 0; k < list.length; k++) {
@@ -6380,7 +6389,7 @@ function renderAgendaScreen(schema, table) {
             const lines = wrapLines(label, maxTextWidth, Math.max(1, maxLines - used))
             for (let li = 0; li < lines.length; li++) {
               if (used >= maxLines) break
-              ctx.fillText(lines[li], pad + s(34), startY + used * lineH)
+              ctx.fillText(lines[li], x + s(34), startY + used * lineH)
               used += 1
             }
           }

@@ -72,6 +72,6 @@ C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compresse
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\Igreja.csproj.Up2Date
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\xrlm5w4aes-{0}-quayl7tug8-quayl7tug8.gz
 C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\igreja\obj\Debug\net10.0\compressed\l2yt544cry-{0}-k7swktmxgk-k7swktmxgk.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\jh633y69c6-{0}-yb7psmdxtm-yb7psmdxtm.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-rpkdsnz28c-rpkdsnz28c.gz
-C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-usy42y4v8u-usy42y4v8u.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\jh633y69c6-{0}-v2s6yqjkjd-v2s6yqjkjd.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\17yiebv4oy-{0}-18yctqvq0p-18yctqvq0p.gz
+C:\Users\zeleg\OneDrive\Documentos\Dev\Igreja\Igreja\obj\Debug\net10.0\compressed\dg9qnb9l9q-{0}-00j45f0h9v-00j45f0h9v.gz
