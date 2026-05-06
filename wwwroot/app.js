@@ -5463,6 +5463,26 @@ function renderAgendaScreen(schema, table) {
     if (digits.length <= 4) return `${d}/${m}`
     return `${d}/${m}/${y}`
   }
+  function formatHoraInput(raw) {
+    const digits = String(raw ?? '').replace(/\D/g, '').slice(0, 4)
+    const h = digits.slice(0, 2)
+    const m = digits.slice(2, 4)
+    if (digits.length <= 2) return h
+    return `${h}:${m}`
+  }
+  function normalizeHora(raw) {
+    const v = String(raw ?? '').trim()
+    if (!v) return null
+    const m = v.match(/^(\d{2}):(\d{2})$/)
+    if (!m) return null
+    const hh = Number(m[1])
+    const mm = Number(m[2])
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null
+    if (mm < 0 || mm > 59) return null
+    if (hh === 24 && mm === 0) return '24:00'
+    if (hh < 0 || hh > 23) return null
+    return `${pad2(hh)}:${pad2(mm)}`
+  }
   function toIntOrNull(v) {
     const n = Number(v)
     if (!Number.isFinite(n)) return null
@@ -5534,7 +5554,14 @@ function renderAgendaScreen(schema, table) {
   const form = document.createElement('div')
   form.className = 'agenda-form'
 
+  const rowDataHora = document.createElement('div')
+  rowDataHora.style.display = 'flex'
+  rowDataHora.style.gap = '12px'
+  rowDataHora.style.flexWrap = 'wrap'
+
   const fData = document.createElement('div'); fData.className = 'field'
+  fData.style.flex = '1'
+  fData.style.minWidth = '180px'
   const lData = document.createElement('label'); lData.textContent = 'Data'
   const iData = document.createElement('input')
   iData.type = 'text'
@@ -5543,6 +5570,20 @@ function renderAgendaScreen(schema, table) {
   iData.placeholder = 'dd/mm/aaaa'
   iData.maxLength = 10
   fData.appendChild(lData); fData.appendChild(iData)
+
+  const fHora = document.createElement('div'); fHora.className = 'field'
+  fHora.style.width = '140px'
+  const lHora = document.createElement('label'); lHora.textContent = 'Hora'
+  const iHora = document.createElement('input')
+  iHora.type = 'text'
+  iHora.inputMode = 'numeric'
+  iHora.autocomplete = 'off'
+  iHora.placeholder = 'hh:mm'
+  iHora.maxLength = 5
+  fHora.appendChild(lHora); fHora.appendChild(iHora)
+
+  rowDataHora.appendChild(fData)
+  rowDataHora.appendChild(fHora)
 
   const fDesc = document.createElement('div'); fDesc.className = 'field'
   const lDesc = document.createElement('label'); lDesc.textContent = 'Descrição'
@@ -5598,7 +5639,7 @@ function renderAgendaScreen(schema, table) {
   actions.appendChild(btnSalvar)
   actions.appendChild(btnExcluir)
 
-  form.appendChild(fData)
+  form.appendChild(rowDataHora)
   form.appendChild(fDesc)
   form.appendChild(fRepeat)
   form.appendChild(actions)
@@ -5628,8 +5669,16 @@ function renderAgendaScreen(schema, table) {
   navLeft.appendChild(btnPrev); navLeft.appendChild(btnToday); navLeft.appendChild(btnNext)
   const navTitle = document.createElement('div')
   navTitle.className = 'agenda-title'
+  const navRight = document.createElement('div')
+  navRight.className = 'agenda-nav'
+  const btnWeekImage = document.createElement('button')
+  btnWeekImage.type = 'button'
+  btnWeekImage.className = 'btn-secondary'
+  btnWeekImage.textContent = 'Gerar Agenda Semanal'
+  navRight.appendChild(btnWeekImage)
   nav.appendChild(navLeft)
   nav.appendChild(navTitle)
+  nav.appendChild(navRight)
   cardCal.appendChild(nav)
 
   const calWrap = document.createElement('div')
@@ -5653,6 +5702,25 @@ function renderAgendaScreen(schema, table) {
   let selectedEventId = ''
   let selectedEventControle = null
   let repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
+  let agendaHasHora = null
+  const weekImageLayout = {
+    title: 'Agenda da Semana',
+    church: 'IEADM-ITAPEVA',
+    fontTitle: 'Trebuchet MS, Segoe UI, Arial, sans-serif',
+    fontBody: 'Segoe UI, Arial, sans-serif',
+    bgTop: '#0b2a5b',
+    bgBottom: '#0b1220',
+    decor1: '#60a5fa',
+    decor2: '#86efac',
+    headerCardBg: 'rgba(11,18,32,0.92)',
+    headerCardBorder: 'rgba(51,65,85,0.9)',
+    dayCardBg: 'rgba(11,18,32,0.88)',
+    dayCardBorder: 'rgba(31,41,55,0.95)',
+    emptyCardBg: 'rgba(11,18,32,0.85)',
+    emptyCardBorder: 'rgba(51,65,85,0.7)',
+    crossColor: 'rgba(203,213,225,0.18)',
+    accentBar: 'rgba(134,239,172,0.95)'
+  }
 
   function weekdayPt(weekdayIdx) {
     const W = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -6009,9 +6077,344 @@ function renderAgendaScreen(schema, table) {
     return __agendaDatePickerEls
   }
 
+  function brShortDate(d) {
+    const x = new Date(d.getTime())
+    x.setHours(0, 0, 0, 0)
+    return `${pad2(x.getDate())}/${pad2(x.getMonth() + 1)}`
+  }
+
+  async function generateWeeklyImage() {
+    btnWeekImage.disabled = true
+    try {
+      function startOfWeekMonday(d) {
+        const x = new Date(d.getTime())
+        x.setHours(0, 0, 0, 0)
+        const dow = x.getDay()
+        const diff = (dow + 6) % 7
+        return addDays(x, -diff)
+      }
+      function endOfWeekMonday(d) {
+        return addDays(startOfWeekMonday(d), 6)
+      }
+
+      const base = new Date(selectedDate.getTime())
+      base.setHours(0, 0, 0, 0)
+      const ws = startOfWeekMonday(base)
+      const we = endOfWeekMonday(base)
+      const startIso = isoDate(ws)
+      const endIso = isoDate(we)
+
+      let rows = []
+      try {
+        if (agendaHasHora === false) {
+          const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao', data: [`gte.${startIso}`, `lte.${endIso}`], order: 'data.asc,id.asc' })
+          rows = Array.isArray(res) ? res : []
+        } else {
+          try {
+            const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,hora', data: [`gte.${startIso}`, `lte.${endIso}`], order: 'data.asc,hora.asc,id.asc' })
+            agendaHasHora = true
+            rows = Array.isArray(res) ? res : []
+          } catch (e) {
+            const msg = String(e?.message || e || '')
+            if (/hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
+              agendaHasHora = false
+              const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao', data: [`gte.${startIso}`, `lte.${endIso}`], order: 'data.asc,id.asc' })
+              rows = Array.isArray(res) ? res : []
+            } else {
+              throw e
+            }
+          }
+        }
+      } catch {}
+
+      const byDate = new Map()
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(ws, i)
+        byDate.set(isoDate(d), [])
+      }
+      rows.forEach(r => {
+        const d = String(r?.data ?? '').slice(0, 10)
+        if (!byDate.has(d)) return
+        const hr = String(r?.hora ?? '').slice(0, 5)
+        const desc = String(r?.descricao ?? '').trim()
+        if (!desc) return
+        byDate.get(d).push({ hr, desc })
+      })
+      for (const [k, arr] of byDate.entries()) {
+        const list = Array.isArray(arr) ? arr : []
+        list.sort((a, b) => {
+          const ha = String(a?.hr || '99:99')
+          const hb = String(b?.hr || '99:99')
+          const r = ha.localeCompare(hb, 'pt-BR', { sensitivity: 'base' })
+          if (r !== 0) return r
+          return String(a?.desc || '').localeCompare(String(b?.desc || ''), 'pt-BR', { sensitivity: 'base' })
+        })
+        byDate.set(k, list)
+      }
+
+      const canvas = document.createElement('canvas')
+      const W = 1080
+      const H = 1080
+      canvas.width = W
+      canvas.height = H
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas indisponível.')
+      const S = H / 1920
+      const s = (n) => Math.round(Number(n || 0) * S)
+      const F = 1.35
+      const f = (n) => Math.round(Number(n || 0) * S * F)
+      const fontTitle = String(weekImageLayout.fontTitle || 'Segoe UI, Arial, sans-serif')
+      const fontBody = String(weekImageLayout.fontBody || 'Segoe UI, Arial, sans-serif')
+      const lineGap = 1.28
+
+      function roundRect(x, y, w, h, r) {
+        const rr = Math.max(0, Math.min(r, w / 2, h / 2))
+        ctx.beginPath()
+        ctx.moveTo(x + rr, y)
+        ctx.arcTo(x + w, y, x + w, y + h, rr)
+        ctx.arcTo(x + w, y + h, x, y + h, rr)
+        ctx.arcTo(x, y + h, x, y, rr)
+        ctx.arcTo(x, y, x + w, y, rr)
+        ctx.closePath()
+      }
+
+      function wrapLines(text, maxWidth, maxLines) {
+        const words = String(text || '').split(/\s+/).filter(Boolean)
+        const lines = []
+        let line = ''
+        let truncated = false
+        for (let i = 0; i < words.length; i++) {
+          const w = words[i]
+          const next = line ? `${line} ${w}` : w
+          if (ctx.measureText(next).width <= maxWidth) {
+            line = next
+            continue
+          }
+          if (line) lines.push(line)
+          line = w
+          if (lines.length >= maxLines) { truncated = true; break }
+        }
+        if (lines.length < maxLines && line) {
+          lines.push(line)
+          if (lines.length === maxLines && words.length) {
+            const usedWords = lines.join(' ').split(/\s+/).filter(Boolean).length
+            if (usedWords < words.length) truncated = true
+          }
+        }
+        if (lines.length > maxLines) { lines.length = maxLines; truncated = true }
+        if (truncated && lines.length) {
+          const last = lines[lines.length - 1] || ''
+          let t = last
+          while (t && ctx.measureText(`${t}…`).width > maxWidth) {
+            t = t.slice(0, -1)
+          }
+          lines[lines.length - 1] = t ? `${t}…` : '…'
+        }
+        return lines
+      }
+
+      function pickWallpaperUrl() {
+        const el = document.querySelector('.wallpaper')
+        if (!el) return ''
+        let bg = ''
+        try { bg = String(window.getComputedStyle(el).backgroundImage || '') } catch { bg = '' }
+        const m = bg.match(/url\((['"]?)(.*?)\1\)/i)
+        return m ? String(m[2] || '') : ''
+      }
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image()
+          try { img.crossOrigin = 'anonymous' } catch {}
+          img.onload = () => resolve(img)
+          img.onerror = () => reject(new Error('Falha ao carregar imagem de fundo.'))
+          img.src = src
+        })
+      }
+      function drawCover(img, x, y, w, h) {
+        const iw = Number(img?.naturalWidth || img?.width || 0)
+        const ih = Number(img?.naturalHeight || img?.height || 0)
+        if (!iw || !ih) return
+        const s = Math.max(w / iw, h / ih)
+        const dw = iw * s
+        const dh = ih * s
+        const dx = x + (w - dw) / 2
+        const dy = y + (h - dh) / 2
+        ctx.drawImage(img, dx, dy, dw, dh)
+      }
+
+      const bgUrl = pickWallpaperUrl()
+      if (bgUrl) {
+        try {
+          const img = await loadImage(bgUrl)
+          drawCover(img, 0, 0, W, H)
+        } catch {}
+      }
+
+      const grad = ctx.createLinearGradient(0, 0, 0, H)
+      grad.addColorStop(0, weekImageLayout.bgTop)
+      grad.addColorStop(1, weekImageLayout.bgBottom)
+      ctx.save()
+      ctx.globalAlpha = 0.84
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, W, H)
+      ctx.restore()
+
+      ctx.globalAlpha = 0.12
+      ctx.fillStyle = weekImageLayout.decor1
+      ctx.beginPath()
+      ctx.arc(W - s(140), s(180), s(180), 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = weekImageLayout.decor2
+      ctx.beginPath()
+      ctx.arc(s(140), s(260), s(220), 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+
+      function drawCross(cx, cy, size) {
+        const s = size
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.fillStyle = weekImageLayout.crossColor
+        roundRect(-s * 0.14, -s * 0.42, s * 0.28, s * 0.84, s * 0.12)
+        ctx.fill()
+        roundRect(-s * 0.42, -s * 0.14, s * 0.84, s * 0.28, s * 0.12)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      const pad = s(56)
+      const headerH = s(220)
+      const cardW = W - pad * 2
+
+      roundRect(pad, pad, cardW, headerH, s(26))
+      ctx.fillStyle = weekImageLayout.headerCardBg
+      ctx.fill()
+      ctx.strokeStyle = weekImageLayout.headerCardBorder
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      ctx.textBaseline = 'top'
+      ctx.fillStyle = '#e5e7eb'
+      ctx.font = `800 ${f(54)}px ${fontTitle}`
+      ctx.save()
+      ctx.textAlign = 'center'
+      ctx.fillText(String(weekImageLayout.title || ''), pad + (cardW / 2), pad + s(28))
+      ctx.restore()
+
+      ctx.fillStyle = '#cbd5e1'
+      ctx.font = `700 ${f(30)}px ${fontTitle}`
+      ctx.fillText(String(weekImageLayout.church || ''), pad + s(30), pad + s(98))
+
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = `600 ${f(28)}px ${fontBody}`
+      const range = `${brDate(ws)} a ${brDate(we)}`
+      ctx.fillText(range, pad + s(30), pad + s(156))
+
+      const days = []
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(ws, i)
+        const list = byDate.get(isoDate(d)) || []
+        if (Array.isArray(list) && list.length) days.push({ d, list })
+      }
+
+      const areaTop = pad + headerH + s(24)
+      const areaH = H - areaTop - pad
+      const gap = s(14)
+
+      if (!days.length) {
+        roundRect(pad, areaTop, cardW, s(220), s(22))
+        ctx.fillStyle = weekImageLayout.emptyCardBg
+        ctx.fill()
+        ctx.strokeStyle = weekImageLayout.emptyCardBorder
+        ctx.lineWidth = 2
+        ctx.stroke()
+        ctx.fillStyle = '#e5e7eb'
+        ctx.font = `700 ${f(34)}px ${fontBody}`
+        ctx.fillText('Nenhum evento nesta semana', pad + s(28), areaTop + s(30))
+        ctx.fillStyle = '#94a3b8'
+        ctx.font = `500 ${f(26)}px ${fontBody}`
+        ctx.fillText('Use a Agenda para cadastrar os eventos.', pad + s(28), areaTop + s(86))
+      } else {
+        const N = days.length
+        const rawH = Math.floor((areaH - gap * Math.max(0, N - 1)) / N)
+        const dayH = Math.max(s(160), Math.min(s(360), rawH))
+
+        const DOW_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+        for (let i = 0; i < N; i++) {
+          const itemDay = days[i]
+          const d = itemDay.d
+          const list = itemDay.list || []
+          const y = areaTop + i * (dayH + gap)
+
+          roundRect(pad, y, cardW, dayH, s(22))
+          ctx.fillStyle = weekImageLayout.dayCardBg
+          ctx.fill()
+          ctx.strokeStyle = weekImageLayout.dayCardBorder
+          ctx.lineWidth = 2
+          ctx.stroke()
+
+          ctx.fillStyle = weekImageLayout.accentBar
+          roundRect(pad + s(14), y + s(16), s(10), dayH - s(32), s(8))
+          ctx.fill()
+
+          ctx.fillStyle = '#e5e7eb'
+          ctx.font = `800 ${f(34)}px ${fontTitle}`
+          const title = `${DOW_FULL[d.getDay()]} • ${brShortDate(d)}`
+          ctx.fillText(title, pad + s(34), y + s(20))
+
+          ctx.fillStyle = '#cbd5e1'
+          ctx.font = `600 ${f(28)}px ${fontBody}`
+
+          const maxTextWidth = cardW - s(70)
+          const startY = y + s(92)
+          const lineH = Math.round(f(32) * lineGap)
+          const maxLines = Math.max(2, Math.floor((dayH - s(120)) / lineH))
+
+          let used = 0
+          for (let k = 0; k < list.length; k++) {
+            if (used >= maxLines) break
+            const it = list[k] || {}
+            const hr = String(it?.hr ?? '').slice(0, 5)
+            const desc = String(it?.desc ?? '')
+            const label = hr ? `• ${hr} — ${desc}` : `• ${desc}`
+            const lines = wrapLines(label, maxTextWidth, Math.max(1, maxLines - used))
+            for (let li = 0; li < lines.length; li++) {
+              if (used >= maxLines) break
+              ctx.fillText(lines[li], pad + s(34), startY + used * lineH)
+              used += 1
+            }
+          }
+        }
+      }
+
+      const blob = await new Promise((resolve, reject) => {
+        try {
+          canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Falha ao gerar imagem.'))), 'image/png', 1)
+        } catch (e) {
+          reject(e)
+        }
+      })
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `agenda-semanal-${startIso}.png`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => { try { URL.revokeObjectURL(url) } catch {} }, 1500)
+      showStatus('Imagem gerada.', 'success')
+    } catch (e) {
+      showStatus(String(e?.message || e), 'error')
+    } finally {
+      btnWeekImage.disabled = false
+    }
+  }
+
   function fillFormFromRow(row) {
     const d = parseIsoDate(String(row?.data ?? '').slice(0, 10))
     iData.value = d ? brDate(d) : ''
+    iHora.value = String(row?.hora ?? '').slice(0, 5)
     iDesc.value = String(row?.descricao ?? '')
     repeatState = { freq: 'none', interval: 1, monthlyMode: 'dayOfMonth', customDates: [] }
     renderRepeatSummary()
@@ -6019,8 +6422,24 @@ function renderAgendaScreen(schema, table) {
   }
 
   async function loadRowById(id) {
-    const rows = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', id: `eq.${id}`, limit: 1 })
-    return Array.isArray(rows) ? (rows[0] || null) : null
+    const baseParams = { id: `eq.${id}`, limit: 1 }
+    if (agendaHasHora === false) {
+      const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: 'id,data,descricao,id_controle' })
+      return Array.isArray(rows) ? (rows[0] || null) : null
+    }
+    try {
+      const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: 'id,data,descricao,hora,id_controle' })
+      agendaHasHora = true
+      return Array.isArray(rows) ? (rows[0] || null) : null
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      if (/hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
+        agendaHasHora = false
+        const rows = await apiGet(AGENDA_TABLE, { ...baseParams, select: 'id,data,descricao,id_controle' })
+        return Array.isArray(rows) ? (rows[0] || null) : null
+      }
+      throw e
+    }
   }
 
   function updateNavTitle() {
@@ -6061,7 +6480,9 @@ function renderAgendaScreen(schema, table) {
       const div = document.createElement('div')
       div.className = 'agenda-event'
       div.classList.toggle('active', String(r?.id ?? '') === String(selectedEventId))
-      div.textContent = String(r?.descricao ?? '')
+      const hr = String(r?.hora ?? '').slice(0, 5)
+      const desc = String(r?.descricao ?? '')
+      div.textContent = hr ? `${hr} - ${desc}` : desc
       div.onclick = async () => {
         try {
           const id = String(r?.id ?? '').trim()
@@ -6135,7 +6556,9 @@ function renderAgendaScreen(schema, table) {
         list.slice(0, 3).forEach(r => {
           const line = document.createElement('div')
           line.className = 'agenda-cell-line'
-          line.textContent = String(r?.descricao ?? '')
+          const hr = String(r?.hora ?? '').slice(0, 5)
+          const desc = String(r?.descricao ?? '')
+          line.textContent = hr ? `${hr} - ${desc}` : desc
           cell.appendChild(line)
         })
         if (list.length > 3) {
@@ -6221,8 +6644,25 @@ function renderAgendaScreen(schema, table) {
       end = isoDate(anchorDate)
     }
     try {
-      const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,id.asc' })
-      agendaRows = Array.isArray(res) ? res : []
+      if (agendaHasHora === false) {
+        const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,id.asc' })
+        agendaRows = Array.isArray(res) ? res : []
+      } else {
+        try {
+          const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,hora,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,hora.asc,id.asc' })
+          agendaHasHora = true
+          agendaRows = Array.isArray(res) ? res : []
+        } catch (e) {
+          const msg = String(e?.message || e || '')
+          if (/hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
+            agendaHasHora = false
+            const res = await apiGet(AGENDA_TABLE, { select: 'id,data,descricao,id_controle', data: [`gte.${start}`, `lte.${end}`], order: 'data.asc,id.asc' })
+            agendaRows = Array.isArray(res) ? res : []
+          } else {
+            throw e
+          }
+        }
+      }
     } catch (e) {
       agendaRows = []
       showStatus(String(e?.message || e), 'error')
@@ -6670,6 +7110,8 @@ function renderAgendaScreen(schema, table) {
     if (!dataTxt) { showStatus('Informe a data.', 'error'); return }
     const dataVal = parseBrDateToIso(dataTxt)
     if (!dataVal) { showStatus('Data inválida.', 'error'); return }
+    const horaVal = normalizeHora(iHora.value)
+    if (String(iHora.value || '').trim() && !horaVal) { showStatus('Hora inválida.', 'error'); return }
     const descVal = String(iDesc.value || '').trim()
     if (!descVal) { showStatus('Informe a descrição.', 'error'); return }
 
@@ -6678,14 +7120,37 @@ function renderAgendaScreen(schema, table) {
         const full = await loadRowById(selectedEventId)
         const ctrl = toIntOrNull(full?.id_controle) || toIntOrNull(selectedEventControle)
         const applyAll = await maybeAskApplyAll(ctrl)
-        const payload = { data: dataVal || null, descricao: descVal || null }
+        const payload = (agendaHasHora === false)
+          ? { data: dataVal || null, descricao: descVal || null }
+          : { data: dataVal || null, descricao: descVal || null, hora: horaVal }
 
         if (applyAll && ctrl) {
-          const payloadAll = { descricao: descVal || null }
-          await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, payloadAll)
-          await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null })
+          const payloadAll = (agendaHasHora === false) ? { descricao: descVal || null } : { descricao: descVal || null, hora: horaVal }
+          try {
+            await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, payloadAll)
+            await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null })
+          } catch (e) {
+            const msg = String(e?.message || e || '')
+            if (agendaHasHora !== false && /hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
+              agendaHasHora = false
+              await apiUpdateWhere(AGENDA_TABLE, { id_controle: `eq.${ctrl}` }, { descricao: descVal || null })
+              await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null })
+            } else {
+              throw e
+            }
+          }
         } else {
-          await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, payload)
+          try {
+            await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, payload)
+          } catch (e) {
+            const msg = String(e?.message || e || '')
+            if (agendaHasHora !== false && /hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
+              agendaHasHora = false
+              await apiUpdate(AGENDA_TABLE, 'id', selectedEventId, { data: dataVal || null, descricao: descVal || null })
+            } else {
+              throw e
+            }
+          }
         }
         showStatus('Salvo.', 'success')
         const d = parseIsoDate(dataVal) || new Date()
@@ -6700,13 +7165,24 @@ function renderAgendaScreen(schema, table) {
 
       const ctrl = await nextControle()
       const dates = buildRepeatDates(dataVal, repeatState)
-      const payloads = dates.map(dt => ({
-        data: dt,
-        descricao: descVal || null,
-        id_controle: ctrl
-      }))
+      const payloads = dates.map(dt => {
+        const o = { data: dt, descricao: descVal || null, id_controle: ctrl }
+        if (agendaHasHora !== false) o.hora = horaVal
+        return o
+      })
       if (!payloads.length) { showStatus('Data inválida.', 'error'); return }
-      await apiCreate(AGENDA_TABLE, payloads)
+      try {
+        await apiCreate(AGENDA_TABLE, payloads)
+      } catch (e) {
+        const msg = String(e?.message || e || '')
+        if (agendaHasHora !== false && /hora/i.test(msg) && /(column|field|schema)/i.test(msg)) {
+          agendaHasHora = false
+          const payloads2 = dates.map(dt => ({ data: dt, descricao: descVal || null, id_controle: ctrl }))
+          await apiCreate(AGENDA_TABLE, payloads2)
+        } else {
+          throw e
+        }
+      }
       showStatus('Salvo.', 'success')
       const d = parseIsoDate(payloads[0].data) || new Date()
       selectedDate = d
@@ -6747,6 +7223,10 @@ function renderAgendaScreen(schema, table) {
 
   btnExcluir.disabled = true
   iData.value = brDate(selectedDate)
+
+  btnWeekImage.onclick = () => {
+    generateWeeklyImage().catch(e => showStatus(String(e?.message || e), 'error'))
+  }
 
   btnDia.onclick = () => { viewMode = 'day'; anchorDate = new Date(selectedDate.getTime()); setActiveView(); refresh().catch(e => showStatus(String(e?.message || e), 'error')) }
   btnSemana.onclick = () => { viewMode = 'week'; anchorDate = new Date(selectedDate.getTime()); setActiveView(); refresh().catch(e => showStatus(String(e?.message || e), 'error')) }
@@ -6804,6 +7284,11 @@ function renderAgendaScreen(schema, table) {
     }
     renderRepeatSummary()
     renderRepeatInline()
+  }
+
+  iHora.oninput = () => {
+    const next = formatHoraInput(iHora.value)
+    if (iHora.value !== next) iHora.value = next
   }
   renderRepeatSummary()
   renderRepeatInline()
