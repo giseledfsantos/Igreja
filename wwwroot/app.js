@@ -6068,16 +6068,6 @@ function renderAgendaScreen(schema, table) {
       })
 
     escalaTable.innerHTML = ''
-    const thead = document.createElement('thead')
-    const trh = document.createElement('tr')
-    ;['Data', 'Evento', 'Membro 1', 'Membro 2', 'Membro 3'].forEach(t => {
-      const th = document.createElement('th')
-      th.textContent = t
-      trh.appendChild(th)
-    })
-    thead.appendChild(trh)
-    escalaTable.appendChild(thead)
-
     const tbody = document.createElement('tbody')
     events.forEach(ev => {
       const tr = document.createElement('tr')
