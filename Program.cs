@@ -385,4 +385,113 @@ app.MapPost("/api/push/unsubscribe", async (HttpRequest req) =>
     return Results.Text(content, "application/json");
 });
 
+app.MapGet("/api/push/diagnose-birthdays", async (HttpRequest req) =>
+{
+    var apiKey = ResolveApiKey(req);
+    if (string.IsNullOrWhiteSpace(apiKey)) return Results.Problem("SUPABASE_KEY não configurada.");
+
+    var asOfRaw = req.Query.ContainsKey("asOf") ? req.Query["asOf"].ToString() : "";
+    DateOnly? asOf = null;
+    if (!string.IsNullOrWhiteSpace(asOfRaw) && DateOnly.TryParse(asOfRaw, out var parsed)) asOf = parsed;
+
+    var tz = TimeZoneInfo.Local;
+    try { tz = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo"); } catch { }
+    try { tz = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); } catch { }
+
+    var nowLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz);
+    var today = asOf ?? DateOnly.FromDateTime(nowLocal.DateTime);
+    var tomorrow = today.AddDays(1);
+
+    using var http = new HttpClient();
+    http.DefaultRequestHeaders.TryAddWithoutValidation("apikey", apiKey);
+    http.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
+    http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+    async Task<(bool ok, int status, string text)> Get(string url)
+    {
+        using var res = await http.GetAsync(url);
+        var txt = await res.Content.ReadAsStringAsync();
+        return (res.IsSuccessStatusCode, (int)res.StatusCode, txt ?? "");
+    }
+
+    var usersUrl = $"{SUPABASE_URL}/rest/v1/usuarios?select=id,recebe_notificacoes&recebe_notificacoes=eq.true";
+    var (uOk, uStatus, uTxt) = await Get(usersUrl);
+    var optedUsers = new HashSet<long>();
+    if (uOk)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(uTxt);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                foreach (var el in doc.RootElement.EnumerateArray())
+                    if (el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Number)
+                        optedUsers.Add(idEl.GetInt64());
+        }
+        catch { }
+    }
+
+    var subsUrl = $"{SUPABASE_URL}/rest/v1/push_subscriptions?select=id,id_usuario,revoked_at&revoked_at=is.null";
+    var (sOk, sStatus, sTxt) = await Get(subsUrl);
+    var subs = new List<(long id, long userId)>();
+    if (sOk)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(sTxt);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    if (!el.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.Number) continue;
+                    if (!el.TryGetProperty("id_usuario", out var uEl) || uEl.ValueKind != JsonValueKind.Number) continue;
+                    subs.Add((idEl.GetInt64(), uEl.GetInt64()));
+                }
+        }
+        catch { }
+    }
+
+    var membersUrl = $"{SUPABASE_URL}/rest/v1/membros?select=id,nome,data_nascimento&data_nascimento=is.not.null";
+    var (mOk, mStatus, mTxt) = await Get(membersUrl);
+    var todayMatches = new List<object>();
+    var tomorrowMatches = new List<object>();
+    if (mOk)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(mTxt);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    if (!el.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.Number) continue;
+                    var nome = el.TryGetProperty("nome", out var nEl) ? (nEl.GetString() ?? "") : "";
+                    var dnStr = el.TryGetProperty("data_nascimento", out var dEl) ? (dEl.GetString() ?? "") : "";
+                    if (dnStr.Length >= 10) dnStr = dnStr.Substring(0, 10);
+                    if (!DateOnly.TryParse(dnStr, out var dn)) continue;
+                    if (dn.Month == today.Month && dn.Day == today.Day) todayMatches.Add(new { id = idEl.GetInt64(), nome });
+                    if (dn.Month == tomorrow.Month && dn.Day == tomorrow.Day) tomorrowMatches.Add(new { id = idEl.GetInt64(), nome });
+                }
+        }
+        catch { }
+    }
+
+    var activeSubsForOpted = subs.Count(x => optedUsers.Contains(x.userId));
+    return Results.Json(new
+    {
+        ok = true,
+        date = new { today, tomorrow, tz = tz.Id, asOf = asOfRaw },
+        env = new
+        {
+            hasSupabaseKey = !string.IsNullOrWhiteSpace(apiKey),
+            hasVapidPublicKey = !string.IsNullOrWhiteSpace(VAPID_PUBLIC_KEY),
+            hasVapidPrivateKey = !string.IsNullOrWhiteSpace(VAPID_PRIVATE_KEY)
+        },
+        supabase = new
+        {
+            usuarios = new { ok = uOk, status = uStatus, count = optedUsers.Count, sampleError = uOk ? null : (uTxt.Length > 200 ? uTxt.Substring(0, 200) + "..." : uTxt) },
+            push_subscriptions = new { ok = sOk, status = sStatus, count = subs.Count, activeForOpted = activeSubsForOpted, sampleError = sOk ? null : (sTxt.Length > 200 ? sTxt.Substring(0, 200) + "..." : sTxt) },
+            membros = new { ok = mOk, status = mStatus, sampleError = mOk ? null : (mTxt.Length > 200 ? mTxt.Substring(0, 200) + "..." : mTxt) }
+        },
+        birthdays = new { today = todayMatches, tomorrow = tomorrowMatches }
+    });
+});
+
 app.Run();

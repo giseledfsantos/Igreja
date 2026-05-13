@@ -5198,6 +5198,21 @@ function renderCirculoOracaoScreen(schema, table) {
     const frag = document.createDocumentFragment()
     const freqCells = new Map()
     const freqCellsVisitantes = new Map()
+    const totalCellsByIso = new Map()
+    function countPresencasForIso(iso) {
+      let n = 0
+      membros.forEach(m => { if (presSet.has(`${m.id}|${iso}`)) n += 1 })
+      visitantes.forEach(v => { if (visPresSet.has(`${v.id}|${iso}`)) n += 1 })
+      return n
+    }
+    function updateTotals() {
+      mondays.forEach(s => {
+        const td = totalCellsByIso.get(s.iso)
+        if (!td) return
+        const n = countPresencasForIso(s.iso)
+        td.textContent = n ? String(n) : ''
+      })
+    }
 
     membros.forEach(m => {
       const tr = document.createElement('tr')
@@ -5232,6 +5247,7 @@ function renderCirculoOracaoScreen(schema, table) {
           }
           const fc0 = freqCells.get(m.id)
           if (fc0) fc0.textContent = freqTextForMember(m.id)
+          updateTotals()
           try {
             if (wasPresent) {
               await tryDeleteWhere(presencaTable, DATA_KEYS.flatMap(dk => MEMBRO_KEYS.map(mk => ({ [mk]: `eq.${m.id}`, [dk]: `eq.${s.iso}` }))))
@@ -5243,6 +5259,7 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
+            updateTotals()
           } catch (e) {
             showStatus(String(e?.message || e), 'error')
             if (wasPresent) {
@@ -5256,6 +5273,7 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCells.get(m.id)
             if (fc) fc.textContent = freqTextForMember(m.id)
+            updateTotals()
           }
         }
         tr.appendChild(td)
@@ -5315,6 +5333,7 @@ function renderCirculoOracaoScreen(schema, table) {
           }
           const fc0 = freqCellsVisitantes.get(v.id)
           if (fc0) fc0.textContent = freqTextForVisitor(v.id)
+          updateTotals()
           try {
             if (visitantesMode === 'db' && visitantesPresencaMode === 'db') {
               if (wasPresent) {
@@ -5330,6 +5349,7 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCellsVisitantes.get(v.id)
             if (fc) fc.textContent = freqTextForVisitor(v.id)
+            updateTotals()
           } catch (e) {
             showStatus(String(e?.message || e), 'error')
             if (wasPresent) {
@@ -5343,6 +5363,7 @@ function renderCirculoOracaoScreen(schema, table) {
             }
             const fc = freqCellsVisitantes.get(v.id)
             if (fc) fc.textContent = freqTextForVisitor(v.id)
+            updateTotals()
           }
         }
         tr.appendChild(td)
@@ -5356,10 +5377,27 @@ function renderCirculoOracaoScreen(schema, table) {
 
       frag.appendChild(tr)
     })
+
+    const trTotal = document.createElement('tr')
+    trTotal.className = 'ebd-group'
+    const tdTotal = document.createElement('td')
+    tdTotal.textContent = 'Total'
+    tdTotal.className = 'ebd-sticky ebd-sticky-1'
+    trTotal.appendChild(tdTotal)
+    mondays.forEach(s => {
+      const td = document.createElement('td')
+      totalCellsByIso.set(s.iso, td)
+      trTotal.appendChild(td)
+    })
+    const tdTotalRest = document.createElement('td')
+    tdTotalRest.textContent = ''
+    trTotal.appendChild(tdTotalRest)
+    frag.appendChild(trTotal)
     tbody.appendChild(frag)
     tableEl.appendChild(tbody)
     applyStickyOffsets()
     focusNearestDay()
+    updateTotals()
     showStatus('Pronto.', 'success')
     btnAddVisitante.disabled = false
   }

@@ -65,13 +65,21 @@ public sealed class PushBirthdayWorker : BackgroundService
     private async Task RunOnceAsync(TimeZoneInfo tz, CancellationToken ct)
     {
         var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") ?? "https://xytuuccwylwbefgkqxlr.supabase.co";
-        var supabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY") ?? "";
+        var supabaseKey = ResolveSupabaseKey();
         var vapidPublic = Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY") ?? "";
         var vapidPrivate = Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY") ?? "";
         var vapidSubject = Environment.GetEnvironmentVariable("VAPID_SUBJECT") ?? "mailto:admin@ieadm-itapeva";
 
-        if (string.IsNullOrWhiteSpace(supabaseKey)) return;
-        if (string.IsNullOrWhiteSpace(vapidPublic) || string.IsNullOrWhiteSpace(vapidPrivate)) return;
+        if (string.IsNullOrWhiteSpace(supabaseKey))
+        {
+            _logger.LogWarning("Notificações de aniversário: SUPABASE_KEY ausente no ambiente (use SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_KEY).");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(vapidPublic) || string.IsNullOrWhiteSpace(vapidPrivate))
+        {
+            _logger.LogWarning("Notificações de aniversário: VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY ausentes no ambiente.");
+            return;
+        }
 
         var nowLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz);
         var today = DateOnly.FromDateTime(nowLocal.DateTime);
@@ -83,14 +91,26 @@ public sealed class PushBirthdayWorker : BackgroundService
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         var optedUsers = await GetOptedUserIdsAsync(http, supabaseUrl, ct);
-        if (optedUsers.Count == 0) return;
+        if (optedUsers.Count == 0)
+        {
+            _logger.LogInformation("Notificações de aniversário: 0 usuários com recebe_notificacoes=true (ou sem permissão/RLS).");
+            return;
+        }
 
         var subs = await GetActiveSubscriptionsAsync(http, supabaseUrl, ct);
         subs = subs.Where(s => optedUsers.Contains(s.IdUsuario)).ToList();
-        if (subs.Count == 0) return;
+        if (subs.Count == 0)
+        {
+            _logger.LogInformation("Notificações de aniversário: 0 inscrições ativas em push_subscriptions para usuários habilitados (ou sem permissão/RLS).");
+            return;
+        }
 
         var members = await GetMembersWithBirthdayDataAsync(http, supabaseUrl, ct);
-        if (members.Count == 0) return;
+        if (members.Count == 0)
+        {
+            _logger.LogInformation("Notificações de aniversário: 0 membros com data_nascimento (ou sem permissão/RLS).");
+            return;
+        }
 
         var birthdaysToday = members
             .Where(m => m.DataNascimento.HasValue && m.DataNascimento.Value.Month == today.Month && m.DataNascimento.Value.Day == today.Day)
@@ -99,12 +119,18 @@ public sealed class PushBirthdayWorker : BackgroundService
             .Where(m => m.DataNascimento.HasValue && m.DataNascimento.Value.Month == tomorrow.Month && m.DataNascimento.Value.Day == tomorrow.Day)
             .ToList();
 
-        if (birthdaysToday.Count == 0 && birthdaysTomorrow.Count == 0) return;
+        if (birthdaysToday.Count == 0 && birthdaysTomorrow.Count == 0)
+        {
+            _logger.LogInformation("Notificações de aniversário: nenhum aniversariante hoje/amanhã ({Today}/{Tomorrow}).", today, tomorrow);
+            return;
+        }
 
         var vapid = new VapidDetails(vapidSubject, vapidPublic, vapidPrivate);
         var client = new WebPushClient();
 
         var revokeIds = new HashSet<long>();
+        var sent = 0;
+        var attempted = 0;
 
         foreach (var sub in subs)
         {
@@ -112,13 +138,15 @@ public sealed class PushBirthdayWorker : BackgroundService
             {
                 var body = "Amanhã é aniversario de " + m.Nome;
                 var payload = JsonSerializer.Serialize(new { title = "IEADM-ITAPEVA", body, tag = $"bday-{m.Id}-tomorrow-{today:yyyyMMdd}", url = "/" });
-                await SendWithRevokeHandlingAsync(client, vapid, sub, payload, revokeIds, ct);
+                attempted++;
+                if (await SendWithRevokeHandlingAsync(client, vapid, sub, payload, revokeIds, ct)) sent++;
             }
             foreach (var m in birthdaysToday)
             {
                 var body = "Hoje é aniversario de " + m.Nome;
                 var payload = JsonSerializer.Serialize(new { title = "IEADM-ITAPEVA", body, tag = $"bday-{m.Id}-today-{today:yyyyMMdd}", url = "/" });
-                await SendWithRevokeHandlingAsync(client, vapid, sub, payload, revokeIds, ct);
+                attempted++;
+                if (await SendWithRevokeHandlingAsync(client, vapid, sub, payload, revokeIds, ct)) sent++;
             }
         }
 
@@ -126,26 +154,42 @@ public sealed class PushBirthdayWorker : BackgroundService
         {
             await RevokeSubscriptionsAsync(http, supabaseUrl, revokeIds, ct);
         }
+
+        _logger.LogInformation(
+            "Notificações de aniversário: enviado {Sent}/{Attempted}; subs={Subs}; hoje={TodayCount}; amanhã={TomorrowCount}; revogadas={Revoked}.",
+            sent, attempted, subs.Count, birthdaysToday.Count, birthdaysTomorrow.Count, revokeIds.Count
+        );
     }
 
-    private static async Task SendWithRevokeHandlingAsync(WebPushClient client, VapidDetails vapid, SubscriptionRow sub, string payload, HashSet<long> revokeIds, CancellationToken ct)
+    private static async Task<bool> SendWithRevokeHandlingAsync(WebPushClient client, VapidDetails vapid, SubscriptionRow sub, string payload, HashSet<long> revokeIds, CancellationToken ct)
     {
         var ps = new PushSubscription(sub.Endpoint, sub.P256dh, sub.Auth);
         try
         {
             await client.SendNotificationAsync(ps, payload, vapid, ct);
+            return true;
         }
         catch (WebPushException ex) when (ex.StatusCode is HttpStatusCode.Gone or HttpStatusCode.NotFound)
         {
             revokeIds.Add(sub.Id);
+            return false;
+        }
+        catch
+        {
+            return false;
         }
     }
 
-    private static async Task<HashSet<long>> GetOptedUserIdsAsync(HttpClient http, string supabaseUrl, CancellationToken ct)
+    private async Task<HashSet<long>> GetOptedUserIdsAsync(HttpClient http, string supabaseUrl, CancellationToken ct)
     {
         var url = $"{supabaseUrl}/rest/v1/usuarios?select=id,recebe_notificacoes&recebe_notificacoes=eq.true";
         using var res = await http.GetAsync(url, ct);
-        if (!res.IsSuccessStatusCode) return new HashSet<long>();
+        if (!res.IsSuccessStatusCode)
+        {
+            var body = await res.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("Notificações de aniversário: falha ao consultar usuarios (HTTP {Status}). {Body}", (int)res.StatusCode, TrimLog(body));
+            return new HashSet<long>();
+        }
         var json = await res.Content.ReadAsStringAsync(ct);
         try
         {
@@ -167,11 +211,16 @@ public sealed class PushBirthdayWorker : BackgroundService
         }
     }
 
-    private static async Task<List<SubscriptionRow>> GetActiveSubscriptionsAsync(HttpClient http, string supabaseUrl, CancellationToken ct)
+    private async Task<List<SubscriptionRow>> GetActiveSubscriptionsAsync(HttpClient http, string supabaseUrl, CancellationToken ct)
     {
         var url = $"{supabaseUrl}/rest/v1/push_subscriptions?select=id,id_usuario,endpoint,p256dh,auth,revoked_at&revoked_at=is.null";
         using var res = await http.GetAsync(url, ct);
-        if (!res.IsSuccessStatusCode) return new List<SubscriptionRow>();
+        if (!res.IsSuccessStatusCode)
+        {
+            var body = await res.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("Notificações de aniversário: falha ao consultar push_subscriptions (HTTP {Status}). {Body}", (int)res.StatusCode, TrimLog(body));
+            return new List<SubscriptionRow>();
+        }
         var json = await res.Content.ReadAsStringAsync(ct);
         try
         {
@@ -196,11 +245,16 @@ public sealed class PushBirthdayWorker : BackgroundService
         }
     }
 
-    private static async Task<List<MemberRow>> GetMembersWithBirthdayDataAsync(HttpClient http, string supabaseUrl, CancellationToken ct)
+    private async Task<List<MemberRow>> GetMembersWithBirthdayDataAsync(HttpClient http, string supabaseUrl, CancellationToken ct)
     {
         var url = $"{supabaseUrl}/rest/v1/membros?select=id,nome,data_nascimento&data_nascimento=is.not.null";
         using var res = await http.GetAsync(url, ct);
-        if (!res.IsSuccessStatusCode) return new List<MemberRow>();
+        if (!res.IsSuccessStatusCode)
+        {
+            var body = await res.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("Notificações de aniversário: falha ao consultar membros (HTTP {Status}). {Body}", (int)res.StatusCode, TrimLog(body));
+            return new List<MemberRow>();
+        }
         var json = await res.Content.ReadAsStringAsync(ct);
         try
         {
@@ -216,7 +270,8 @@ public sealed class PushBirthdayWorker : BackgroundService
                 if (el.TryGetProperty("data_nascimento", out var dEl) && dEl.ValueKind == JsonValueKind.String)
                 {
                     var s = dEl.GetString() ?? "";
-                    if (DateOnly.TryParse(s, out var parsed)) dn = parsed;
+                    if (s.Length >= 10 && DateOnly.TryParse(s[..10], out var parsed)) dn = parsed;
+                    else if (DateOnly.TryParse(s, out var parsed2)) dn = parsed2;
                 }
                 list.Add(new MemberRow(idEl.GetInt64(), nome, dn));
             }
@@ -228,7 +283,7 @@ public sealed class PushBirthdayWorker : BackgroundService
         }
     }
 
-    private static async Task RevokeSubscriptionsAsync(HttpClient http, string supabaseUrl, HashSet<long> ids, CancellationToken ct)
+    private async Task RevokeSubscriptionsAsync(HttpClient http, string supabaseUrl, HashSet<long> ids, CancellationToken ct)
     {
         var nowIso = DateTimeOffset.UtcNow.ToString("O");
         foreach (var id in ids)
@@ -237,7 +292,14 @@ public sealed class PushBirthdayWorker : BackgroundService
             var msg = new HttpRequestMessage(HttpMethod.Patch, url);
             msg.Headers.TryAddWithoutValidation("Prefer", "return=representation");
             msg.Content = new StringContent(JsonSerializer.Serialize(new { revoked_at = nowIso, updated_at = nowIso }), Encoding.UTF8, "application/json");
-            try { await http.SendAsync(msg, ct); } catch { }
+            try
+            {
+                await http.SendAsync(msg, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Notificações de aniversário: falha ao revogar subscription id={Id}", id);
+            }
         }
     }
 
@@ -250,4 +312,22 @@ public sealed class PushBirthdayWorker : BackgroundService
 
     private sealed record SubscriptionRow(long Id, long IdUsuario, string Endpoint, string P256dh, string Auth);
     private sealed record MemberRow(long Id, string Nome, DateOnly? DataNascimento);
+
+    private static string ResolveSupabaseKey()
+    {
+        var candidates = new[]
+        {
+            Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY"),
+            Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE"),
+            Environment.GetEnvironmentVariable("SUPABASE_KEY")
+        };
+        return candidates.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "";
+    }
+
+    private static string TrimLog(string? s)
+    {
+        var v = (s ?? "").Trim().Replace("\r", " ").Replace("\n", " ");
+        if (v.Length > 300) v = v.Substring(0, 300) + "...";
+        return v;
+    }
 }
