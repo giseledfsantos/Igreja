@@ -235,6 +235,42 @@ async function supabasePatch(pathAndQuery: string, payload: any) {
   return text
 }
 
+async function supabasePost(pathAndQuery: string, payload: any, prefer?: string) {
+  const url = `${SUPABASE_URL.replace(/\/+$/, '')}${pathAndQuery}`
+  const upstream = await fetch(url, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Accept: 'application/json',
+      Prefer: prefer ?? 'return=representation',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload ?? null)
+  })
+  const text = await upstream.text()
+  if (!upstream.ok) {
+    const err = new Error(text || `Supabase POST falhou (${upstream.status})`)
+    ;(err as any).status = upstream.status
+    throw err
+  }
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
+async function safeInsertEvent(payload: any) {
+  try {
+    await supabasePost('/rest/v1/browser_notification_events', [payload], 'return=minimal')
+    return true
+  } catch {
+    return false
+  }
+}
+
 export default async function handler(req: any, res: any) {
   try {
     ensureEnv()
@@ -297,43 +333,114 @@ export default async function handler(req: any, res: any) {
     let sent = 0
     let revoked = 0
     let errors = 0
-    const deliveries: Array<{ subId: string; userId: string; endpointTail: string; tag: string; ok: boolean; statusCode?: number }> = []
+    let trackingErrors = 0
+    const deliveries: Array<{ subId: string; userId: string; endpointTail: string; tag: string; ok: boolean; statusCode?: number; notificationId?: string; deliveryId?: string }> = []
     const todayKey = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`
     const tomorrowKey = `${tomorrow.year}-${String(tomorrow.month).padStart(2, '0')}-${String(tomorrow.day).padStart(2, '0')}`
 
-    for (const sub of activeSubs) {
-      const subscription = {
-        endpoint: String(sub?.endpoint ?? '').trim(),
-        keys: {
-          p256dh: String(sub?.p256dh ?? '').trim(),
-          auth: String(sub?.auth ?? '').trim()
+    const messages: Array<{ title: string; body: string; tag: string; url: string }> = []
+    for (const m of aniversariosAmanha) {
+      const nome = String(m?.nome ?? '').trim()
+      messages.push({ title: 'IEADM-ITAPEVA', body: `Amanhã é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-tomorrow-${tomorrowKey}`, url: '/' })
+    }
+    for (const m of aniversariosHoje) {
+      const nome = String(m?.nome ?? '').trim()
+      messages.push({ title: 'IEADM-ITAPEVA', body: `Hoje é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-today-${todayKey}`, url: '/' })
+    }
+
+    for (const msg of messages) {
+      const nowIso = new Date().toISOString()
+      let notificationId = ''
+      try {
+        const upserted = await supabasePost(
+          '/rest/v1/browser_notifications?on_conflict=idempotency_key',
+          [
+            {
+              kind: 'birthday',
+              correlation_id: msg.tag,
+              idempotency_key: msg.tag,
+              title: msg.title,
+              body: msg.body,
+              url: msg.url,
+              tag: msg.tag,
+              data_json: null,
+              status: 'sending'
+            }
+          ],
+          'resolution=merge-duplicates,return=representation'
+        )
+        notificationId = String((Array.isArray(upserted) ? upserted[0]?.id : upserted?.id) ?? '').trim()
+        if (notificationId) {
+          await safeInsertEvent({
+            notification_id: notificationId,
+            delivery_id: null,
+            event_type: 'queued',
+            source: 'server',
+            occurred_at: nowIso,
+            details_json: { tag: msg.tag }
+          })
         }
-      }
-      if (!subscription.endpoint || !subscription.keys.p256dh || !subscription.keys.auth) continue
-
-      const subId = String(sub?.id ?? '').trim()
-      const userId = String(sub?.id_usuario ?? '').trim()
-      const endpointTail = subscription.endpoint.slice(-12)
-      const messages: Array<{ title: string; body: string; tag: string }> = []
-
-      for (const m of aniversariosAmanha) {
-        const nome = String(m?.nome ?? '').trim()
-        messages.push({ title: 'IEADM-ITAPEVA', body: `Amanhã é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-tomorrow-${tomorrowKey}` })
-      }
-      for (const m of aniversariosHoje) {
-        const nome = String(m?.nome ?? '').trim()
-        messages.push({ title: 'IEADM-ITAPEVA', body: `Hoje é aniversario de ${nome}`, tag: `bday-${m?.id ?? nome}-today-${todayKey}` })
+      } catch {
+        trackingErrors++
       }
 
-      for (const msg of messages) {
+      let okCount = 0
+      let failCount = 0
+
+      for (const sub of activeSubs) {
+        const subscription = {
+          endpoint: String(sub?.endpoint ?? '').trim(),
+          keys: {
+            p256dh: String(sub?.p256dh ?? '').trim(),
+            auth: String(sub?.auth ?? '').trim()
+          }
+        }
+        if (!subscription.endpoint || !subscription.keys.p256dh || !subscription.keys.auth) continue
+
+        const subId = String(sub?.id ?? '').trim()
+        const userId = String(sub?.id_usuario ?? '').trim()
+        const endpointTail = subscription.endpoint.slice(-12)
+
+        let deliveryId = ''
+        if (notificationId && subId) {
+          try {
+            const created = await supabasePost(
+              '/rest/v1/browser_notification_deliveries',
+              [
+                {
+                  notification_id: notificationId,
+                  subscription_id: Number(subId),
+                  id_usuario: Number(userId),
+                  attempt_no: 1,
+                  status: 'sending',
+                  started_at: nowIso
+                }
+              ],
+              'return=representation'
+            )
+            deliveryId = String((Array.isArray(created) ? created[0]?.id : created?.id) ?? '').trim()
+            await safeInsertEvent({
+              notification_id: notificationId,
+              delivery_id: deliveryId || null,
+              event_type: 'send_started',
+              source: 'server',
+              occurred_at: nowIso,
+              details_json: { subscription_id: subId }
+            })
+          } catch {
+            trackingErrors++
+          }
+        }
+
         try {
-          await webpush.sendNotification(
+          const response: any = await webpush.sendNotification(
             subscription as any,
             JSON.stringify({
               title: msg.title,
               body: msg.body,
-              url: '/',
+              url: msg.url,
               tag: msg.tag,
+              notificationId: notificationId || undefined,
               renotify: true,
               silent: false,
               requireInteraction: true,
@@ -342,18 +449,88 @@ export default async function handler(req: any, res: any) {
             }),
             { TTL: 60 * 60, headers: { Urgency: 'high' } } as any
           )
+
           sent++
-          if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: true })
+          okCount++
+
+          const statusCode = Number(response?.statusCode ?? response?.status ?? 201)
+          if (notificationId && deliveryId) {
+            try {
+              await supabasePatch(`/rest/v1/browser_notification_deliveries?id=eq.${encodeURIComponent(deliveryId)}`, {
+                status: 'accepted',
+                push_http_status: statusCode,
+                finished_at: new Date().toISOString()
+              })
+              await safeInsertEvent({
+                notification_id: notificationId,
+                delivery_id: deliveryId,
+                event_type: 'push_accepted',
+                source: 'server',
+                occurred_at: new Date().toISOString(),
+                details_json: { statusCode }
+              })
+            } catch {
+              trackingErrors++
+            }
+          }
+          if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: true, statusCode, notificationId: notificationId || undefined, deliveryId: deliveryId || undefined })
         } catch (e: any) {
           errors++
+          failCount++
+
           const statusCode = Number(e?.statusCode ?? e?.status ?? 0)
-          if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: false, statusCode })
+          const finishedIso = new Date().toISOString()
+          if (notificationId && deliveryId) {
+            try {
+              await supabasePatch(`/rest/v1/browser_notification_deliveries?id=eq.${encodeURIComponent(deliveryId)}`, {
+                status: statusCode === 404 || statusCode === 410 ? 'expired' : 'failed',
+                push_http_status: statusCode || null,
+                error_message: String(e?.message ?? 'Erro ao enviar'),
+                finished_at: finishedIso
+              })
+              await safeInsertEvent({
+                notification_id: notificationId,
+                delivery_id: deliveryId,
+                event_type: 'push_failed',
+                source: 'server',
+                occurred_at: finishedIso,
+                details_json: { statusCode }
+              })
+            } catch {
+              trackingErrors++
+            }
+          }
+          if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: false, statusCode, notificationId: notificationId || undefined, deliveryId: deliveryId || undefined })
+
           if ((statusCode === 404 || statusCode === 410) && subId) {
             try {
-              await supabasePatch(`/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(subId)}`, { revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              await supabasePatch(`/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(subId)}`, { revoked_at: finishedIso, updated_at: finishedIso })
               revoked++
+              if (notificationId) {
+                await safeInsertEvent({
+                  notification_id: notificationId,
+                  delivery_id: deliveryId || null,
+                  event_type: 'subscription_gone',
+                  source: 'server',
+                  occurred_at: finishedIso,
+                  details_json: { subscription_id: subId, statusCode }
+                })
+              }
             } catch {}
           }
+        }
+      }
+
+      if (notificationId) {
+        try {
+          const finalIso = new Date().toISOString()
+          const finalStatus = okCount > 0 ? 'sent' : failCount > 0 ? 'failed' : 'canceled'
+          await supabasePatch(`/rest/v1/browser_notifications?id=eq.${encodeURIComponent(notificationId)}`, {
+            status: finalStatus,
+            sent_at: finalStatus === 'sent' ? finalIso : null
+          })
+        } catch {
+          trackingErrors++
         }
       }
     }
@@ -363,6 +540,7 @@ export default async function handler(req: any, res: any) {
       sent,
       revoked,
       errors,
+      trackingErrors,
       today: aniversariosHoje.length,
       tomorrow: aniversariosAmanha.length,
       subs: activeSubs.length,
