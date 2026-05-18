@@ -701,11 +701,6 @@ button.danger { background: var(--danger); color: white; }
 .ebd-wrap.ebd-one-day {
   max-height: calc(100vh - 220px);
   max-height: calc(100svh - 220px);
-  scrollbar-width: none;
-}
-.ebd-wrap.ebd-one-day::-webkit-scrollbar {
-  width: 0;
-  height: 0;
 }
 .ebd-table {
   border-collapse: separate;
@@ -763,6 +758,13 @@ button.danger { background: var(--danger); color: white; }
   .ebd-wrap.ebd-one-day {
     height: calc(100vh - 220px);
     height: calc(100svh - 220px);
+  }
+  .ebd-wrap.ebd-one-day {
+    scrollbar-width: none;
+  }
+  .ebd-wrap.ebd-one-day::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
   .ebd-table th, .ebd-table td { padding: 4px 6px; font-size: 11px; }
   .ebd-sticky-1 { min-width: 160px; }
