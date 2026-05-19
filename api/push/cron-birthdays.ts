@@ -292,11 +292,21 @@ export default async function handler(req: any, res: any) {
     const asOfRaw = String(urlObj.searchParams.get('asOf') || '').trim()
     const secret = String(process.env.CRON_SECRET ?? process.env.PUSH_CRON_SECRET ?? '').trim()
     const key = String(urlObj.searchParams.get('key') || '').trim()
+    const keyHeader = String(req.headers['x-cron-key'] ?? req.headers['x-cron-secret'] ?? '').trim()
+    const authHeader = String(req.headers['authorization'] ?? '').trim()
+    const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : ''
 
     const isCron = String(req.headers['x-vercel-cron'] ?? '') === '1'
-    const isManualAllowed = !!secret && !!key && key === secret
+    const isManualAllowed =
+      !!secret &&
+      ((!!key && key === secret) || (!!keyHeader && keyHeader === secret) || (!!bearer && bearer === secret))
     if (process.env.VERCEL && !isCron && !isManualAllowed) {
-      res.status(403).json({ error: 'Forbidden' })
+      res.status(403).json({
+        error: 'Forbidden',
+        message: secret
+          ? 'Passe a chave do cron via ?key=..., header x-cron-key, ou Authorization: Bearer <chave>.'
+          : 'Configure CRON_SECRET (ou PUSH_CRON_SECRET) no ambiente para permitir execução manual.'
+      })
       return
     }
 
