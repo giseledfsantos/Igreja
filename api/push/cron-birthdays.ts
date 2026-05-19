@@ -156,17 +156,21 @@ function normalizeVapidPrivateKey(k: string) {
 }
 
 function getDatePartsInSaoPaulo(d: Date) {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  })
-  const parts = fmt.formatToParts(d)
-  const year = Number(parts.find(p => p.type === 'year')?.value || '0')
-  const month = Number(parts.find(p => p.type === 'month')?.value || '0')
-  const day = Number(parts.find(p => p.type === 'day')?.value || '0')
-  return { year, month, day }
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+    const parts = fmt.formatToParts(d)
+    const year = Number(parts.find(p => p.type === 'year')?.value || '0')
+    const month = Number(parts.find(p => p.type === 'month')?.value || '0')
+    const day = Number(parts.find(p => p.type === 'day')?.value || '0')
+    if (year && month && day) return { year, month, day }
+  } catch {}
+  const saoPaulo = new Date(d.getTime() - 3 * 60 * 60 * 1000)
+  return { year: saoPaulo.getUTCFullYear(), month: saoPaulo.getUTCMonth() + 1, day: saoPaulo.getUTCDate() }
 }
 
 function addDays({ year, month, day }: { year: number; month: number; day: number }, days: number) {
