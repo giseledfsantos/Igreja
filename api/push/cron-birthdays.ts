@@ -305,7 +305,17 @@ export default async function handler(req: any, res: any) {
         error: 'Forbidden',
         message: secret
           ? 'Passe a chave do cron via ?key=..., header x-cron-key, ou Authorization: Bearer <chave>.'
-          : 'Configure CRON_SECRET (ou PUSH_CRON_SECRET) no ambiente para permitir execução manual.'
+          : 'Configure CRON_SECRET (ou PUSH_CRON_SECRET) no ambiente para permitir execução manual.',
+        debug: {
+          isVercel: true,
+          isCron,
+          hasSecret: !!secret,
+          provided: {
+            queryKey: !!key,
+            headerKey: !!keyHeader,
+            bearer: !!bearer
+          }
+        }
       })
       return
     }
