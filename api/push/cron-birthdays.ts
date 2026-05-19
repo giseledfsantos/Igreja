@@ -266,12 +266,12 @@ async function supabasePost(pathAndQuery: string, payload: any, prefer?: string)
   }
 }
 
-async function safeInsertEvent(payload: any) {
+async function safeInsertEvent(payload: any): Promise<{ ok: boolean; error?: string }> {
   try {
     await supabasePost('/rest/v1/browser_notification_events', [payload], 'return=minimal')
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message ?? e ?? 'Erro ao inserir evento') }
   }
 }
 
@@ -301,11 +301,18 @@ export default async function handler(req: any, res: any) {
       !!secret &&
       ((!!key && key === secret) || (!!keyHeader && keyHeader === secret) || (!!bearer && bearer === secret))
     if (process.env.VERCEL && !isCron && !isManualAllowed) {
+      const runtime = {
+        deployment: String(process.env.VERCEL_DEPLOYMENT_ID ?? ''),
+        commit: String(process.env.VERCEL_GIT_COMMIT_SHA ?? ''),
+        env: String(process.env.VERCEL_ENV ?? ''),
+        isVercel: true
+      }
       res.status(403).json({
         error: 'Forbidden',
         message: secret
           ? 'Passe a chave do cron via ?key=..., header x-cron-key, ou Authorization: Bearer <chave>.'
           : 'Configure CRON_SECRET (ou PUSH_CRON_SECRET) no ambiente para permitir execução manual.',
+        runtime,
         debug: {
           isVercel: true,
           isCron,
@@ -331,10 +338,19 @@ export default async function handler(req: any, res: any) {
     const membros = await supabaseGet('/rest/v1/membros?select=id,nome,data_nascimento')
     const aniversariosHoje: any[] = []
     const aniversariosAmanha: any[] = []
+    let skippedBirthdays = 0
+    const skippedBirthdaySamples: Array<{ id: any; nome: any; data_nascimento: any }> = []
 
     for (const m of Array.isArray(membros) ? membros : []) {
-      const md = monthDayFromDateValue(m?.data_nascimento ?? m?.dataNascimento)
-      if (!md) continue
+      const raw = m?.data_nascimento ?? m?.dataNascimento
+      const md = monthDayFromDateValue(raw)
+      if (!md) {
+        skippedBirthdays++
+        if (debug && skippedBirthdaySamples.length < 12) {
+          skippedBirthdaySamples.push({ id: m?.id, nome: m?.nome, data_nascimento: raw })
+        }
+        continue
+      }
       if (md.month === today.month && md.day === today.day) aniversariosHoje.push(m)
       if (md.month === tomorrow.month && md.day === tomorrow.day) aniversariosAmanha.push(m)
     }
@@ -358,6 +374,13 @@ export default async function handler(req: any, res: any) {
     let revoked = 0
     let errors = 0
     let trackingErrors = 0
+    const trackingIssues: Array<{ step: string; error: string }> = []
+    function noteTracking(step: string, err: any) {
+      trackingErrors++
+      if (debug && trackingIssues.length < 12) {
+        trackingIssues.push({ step, error: String(err?.message ?? err ?? 'Erro') })
+      }
+    }
     const deliveries: Array<{ subId: string; userId: string; endpointTail: string; tag: string; ok: boolean; statusCode?: number; notificationId?: string; deliveryId?: string }> = []
     const todayKey = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`
     const tomorrowKey = `${tomorrow.year}-${String(tomorrow.month).padStart(2, '0')}-${String(tomorrow.day).padStart(2, '0')}`
@@ -395,7 +418,7 @@ export default async function handler(req: any, res: any) {
         )
         notificationId = String((Array.isArray(upserted) ? upserted[0]?.id : upserted?.id) ?? '').trim()
         if (notificationId) {
-          await safeInsertEvent({
+          const ev = await safeInsertEvent({
             notification_id: notificationId,
             delivery_id: null,
             event_type: 'queued',
@@ -403,9 +426,10 @@ export default async function handler(req: any, res: any) {
             occurred_at: nowIso,
             details_json: { tag: msg.tag }
           })
+          if (!ev.ok) noteTracking('event:queued', ev.error)
         }
-      } catch {
-        trackingErrors++
+      } catch (e: any) {
+        noteTracking('browser_notifications:upsert', e)
       }
 
       let okCount = 0
@@ -443,7 +467,7 @@ export default async function handler(req: any, res: any) {
               'return=representation'
             )
             deliveryId = String((Array.isArray(created) ? created[0]?.id : created?.id) ?? '').trim()
-            await safeInsertEvent({
+            const ev = await safeInsertEvent({
               notification_id: notificationId,
               delivery_id: deliveryId || null,
               event_type: 'send_started',
@@ -451,8 +475,9 @@ export default async function handler(req: any, res: any) {
               occurred_at: nowIso,
               details_json: { subscription_id: subId }
             })
-          } catch {
-            trackingErrors++
+            if (!ev.ok) noteTracking('event:send_started', ev.error)
+          } catch (e: any) {
+            noteTracking('browser_notification_deliveries:insert', e)
           }
         }
 
@@ -485,7 +510,7 @@ export default async function handler(req: any, res: any) {
                 push_http_status: statusCode,
                 finished_at: new Date().toISOString()
               })
-              await safeInsertEvent({
+              const ev = await safeInsertEvent({
                 notification_id: notificationId,
                 delivery_id: deliveryId,
                 event_type: 'push_accepted',
@@ -493,8 +518,9 @@ export default async function handler(req: any, res: any) {
                 occurred_at: new Date().toISOString(),
                 details_json: { statusCode }
               })
-            } catch {
-              trackingErrors++
+              if (!ev.ok) noteTracking('event:push_accepted', ev.error)
+            } catch (e: any) {
+              noteTracking('browser_notification_deliveries:accept', e)
             }
           }
           if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: true, statusCode, notificationId: notificationId || undefined, deliveryId: deliveryId || undefined })
@@ -512,7 +538,7 @@ export default async function handler(req: any, res: any) {
                 error_message: String(e?.message ?? 'Erro ao enviar'),
                 finished_at: finishedIso
               })
-              await safeInsertEvent({
+              const ev = await safeInsertEvent({
                 notification_id: notificationId,
                 delivery_id: deliveryId,
                 event_type: 'push_failed',
@@ -520,8 +546,9 @@ export default async function handler(req: any, res: any) {
                 occurred_at: finishedIso,
                 details_json: { statusCode }
               })
-            } catch {
-              trackingErrors++
+              if (!ev.ok) noteTracking('event:push_failed', ev.error)
+            } catch (e2: any) {
+              noteTracking('browser_notification_deliveries:fail', e2)
             }
           }
           if (debug) deliveries.push({ subId, userId, endpointTail, tag: msg.tag, ok: false, statusCode, notificationId: notificationId || undefined, deliveryId: deliveryId || undefined })
@@ -531,7 +558,7 @@ export default async function handler(req: any, res: any) {
               await supabasePatch(`/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(subId)}`, { revoked_at: finishedIso, updated_at: finishedIso })
               revoked++
               if (notificationId) {
-                await safeInsertEvent({
+                const ev = await safeInsertEvent({
                   notification_id: notificationId,
                   delivery_id: deliveryId || null,
                   event_type: 'subscription_gone',
@@ -539,6 +566,7 @@ export default async function handler(req: any, res: any) {
                   occurred_at: finishedIso,
                   details_json: { subscription_id: subId, statusCode }
                 })
+                if (!ev.ok) noteTracking('event:subscription_gone', ev.error)
               }
             } catch {}
           }
@@ -553,8 +581,8 @@ export default async function handler(req: any, res: any) {
             status: finalStatus,
             sent_at: finalStatus === 'sent' ? finalIso : null
           })
-        } catch {
-          trackingErrors++
+        } catch (e: any) {
+          noteTracking('browser_notifications:finalize', e)
         }
       }
     }
@@ -565,8 +593,11 @@ export default async function handler(req: any, res: any) {
       revoked,
       errors,
       trackingErrors,
+      trackingIssues: debug ? trackingIssues : undefined,
       today: aniversariosHoje.length,
       tomorrow: aniversariosAmanha.length,
+      skippedBirthdays: debug ? skippedBirthdays : undefined,
+      skippedBirthdaySamples: debug ? skippedBirthdaySamples : undefined,
       subs: activeSubs.length,
       allowedUsers: allowedUserIds.size,
       date: { today, tomorrow },
