@@ -275,6 +275,26 @@ async function safeInsertEvent(payload: any): Promise<{ ok: boolean; error?: str
   }
 }
 
+async function safeCreateCronRun(payload: any): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const created = await supabasePost('/rest/v1/cron_runs', [payload], 'return=representation')
+    const id = String((Array.isArray(created) ? created[0]?.id : created?.id) ?? '').trim()
+    return id ? { ok: true, id } : { ok: false, error: 'cron_runs não retornou id' }
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message ?? e ?? 'Erro ao inserir cron_runs') }
+  }
+}
+
+async function safeUpdateCronRun(id: string, payload: any): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (!id) return { ok: false, error: 'id ausente' }
+    await supabasePatch(`/rest/v1/cron_runs?id=eq.${encodeURIComponent(id)}`, payload)
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message ?? e ?? 'Erro ao atualizar cron_runs') }
+  }
+}
+
 export default async function handler(req: any, res: any) {
   try {
     ensureEnv()
@@ -295,8 +315,11 @@ export default async function handler(req: any, res: any) {
     const keyHeader = String(req.headers['x-cron-key'] ?? req.headers['x-cron-secret'] ?? '').trim()
     const authHeader = String(req.headers['authorization'] ?? '').trim()
     const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : ''
+    const userAgent = String(req.headers['user-agent'] ?? '').trim()
 
-    const isCron = String(req.headers['x-vercel-cron'] ?? '') === '1'
+    const isCronHeader = String(req.headers['x-vercel-cron'] ?? '') === '1'
+    const isCronUserAgent = /vercel-cron\/1\.0/i.test(userAgent)
+    const isCron = isCronHeader || isCronUserAgent
     const isManualAllowed =
       !!secret &&
       ((!!key && key === secret) || (!!keyHeader && keyHeader === secret) || (!!bearer && bearer === secret))
@@ -307,6 +330,17 @@ export default async function handler(req: any, res: any) {
         env: String(process.env.VERCEL_ENV ?? ''),
         isVercel: true
       }
+      try {
+        console.log('cron-birthdays:forbidden', {
+          path: urlObj.pathname,
+          runtime,
+          hasSecret: !!secret,
+          provided: { queryKey: !!key, headerKey: !!keyHeader, bearer: !!bearer },
+          isCronHeader,
+          isCronUserAgent,
+          userAgent
+        })
+      } catch {}
       res.status(403).json({
         error: 'Forbidden',
         message: secret
@@ -327,6 +361,40 @@ export default async function handler(req: any, res: any) {
       return
     }
 
+    let cronRunId = ''
+    try {
+      const startedAt = new Date().toISOString()
+      const created = await safeCreateCronRun({
+        job: 'push/cron-birthdays',
+        status: 'running',
+        started_at: startedAt,
+        finished_at: null,
+        is_cron: isCron,
+        user_agent: userAgent,
+        details_json: {
+          vercel_env: String(process.env.VERCEL_ENV ?? ''),
+          deployment: String(process.env.VERCEL_DEPLOYMENT_ID ?? ''),
+          commit: String(process.env.VERCEL_GIT_COMMIT_SHA ?? '')
+        }
+      })
+      cronRunId = created.id || ''
+    } catch {}
+
+    try {
+      console.log('cron-birthdays:start', {
+        path: urlObj.pathname,
+        isCron,
+        isCronHeader,
+        isCronUserAgent,
+        hasSecret: !!secret,
+        manualAuthProvided: { queryKey: !!key, headerKey: !!keyHeader, bearer: !!bearer },
+        vercelEnv: String(process.env.VERCEL_ENV ?? ''),
+        deployment: String(process.env.VERCEL_DEPLOYMENT_ID ?? ''),
+        userAgent,
+        asOfRaw: asOfRaw || undefined
+      })
+    } catch {}
+
     const normalizedPrivateKey = normalizeVapidPrivateKey(VAPID_PRIVATE_KEY)
     webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, normalizedPrivateKey)
 
@@ -342,7 +410,8 @@ export default async function handler(req: any, res: any) {
     const skippedBirthdaySamples: Array<{ id: any; nome: any; data_nascimento: any }> = []
 
     for (const m of Array.isArray(membros) ? membros : []) {
-      const raw = m?.data_nascimento ?? m?.dataNascimento
+      const raw =
+        m && Object.prototype.hasOwnProperty.call(m, 'data_nascimento') ? (m as any).data_nascimento : (m as any)?.dataNascimento
       const md = monthDayFromDateValue(raw)
       if (!md) {
         skippedBirthdays++
@@ -356,6 +425,23 @@ export default async function handler(req: any, res: any) {
     }
 
     if (!aniversariosHoje.length && !aniversariosAmanha.length) {
+      const finishedAt = new Date().toISOString()
+      if (cronRunId) {
+        await safeUpdateCronRun(cronRunId, {
+          status: 'done',
+          finished_at: finishedAt,
+          result_json: {
+            sent: 0,
+            revoked: 0,
+            errors: 0,
+            today: 0,
+            tomorrow: 0
+          }
+        })
+      }
+      try {
+        console.log('cron-birthdays:done', { sent: 0, errors: 0, revoked: 0, trackingErrors: 0, today: 0, tomorrow: 0, subs: 0, allowedUsers: 0 })
+      } catch {}
       res.status(200).json({ ok: true, sent: 0, revoked: 0, today: aniversariosHoje.length, tomorrow: aniversariosAmanha.length })
       return
     }
@@ -601,6 +687,20 @@ export default async function handler(req: any, res: any) {
       subs: activeSubs.length,
       allowedUsers: allowedUserIds.size,
       date: { today, tomorrow },
+      runtime: debug
+        ? {
+            env: String(process.env.VERCEL_ENV ?? ''),
+            deployment: String(process.env.VERCEL_DEPLOYMENT_ID ?? ''),
+            commit: String(process.env.VERCEL_GIT_COMMIT_SHA ?? '')
+          }
+        : undefined,
+      auth: debug
+        ? {
+            isCron,
+            isCronHeader,
+            isCronUserAgent
+          }
+        : undefined,
       deliveries: debug ? deliveries : undefined,
       matches: debug
         ? {
@@ -609,6 +709,37 @@ export default async function handler(req: any, res: any) {
           }
         : undefined
     })
+    try {
+      console.log('cron-birthdays:done', {
+        sent,
+        errors,
+        revoked,
+        trackingErrors,
+        today: aniversariosHoje.length,
+        tomorrow: aniversariosAmanha.length,
+        subs: activeSubs.length,
+        allowedUsers: allowedUserIds.size
+      })
+    } catch {}
+    try {
+      const finishedAt = new Date().toISOString()
+      if (cronRunId) {
+        await safeUpdateCronRun(cronRunId, {
+          status: 'done',
+          finished_at: finishedAt,
+          result_json: {
+            sent,
+            revoked,
+            errors,
+            trackingErrors,
+            today: aniversariosHoje.length,
+            tomorrow: aniversariosAmanha.length,
+            subs: activeSubs.length,
+            allowedUsers: allowedUserIds.size
+          }
+        })
+      }
+    } catch {}
   } catch (err: any) {
     const msg = err?.message ?? 'Erro interno'
     try { console.error('api/push/cron-birthdays:error', msg) } catch {}
