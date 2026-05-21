@@ -1,7 +1,7 @@
 {
   "outputDirectory": "wwwroot",
   "crons": [
-    { "path": "/api/push/cron-birthdays", "schedule": "30 16 * * *" }
+    { "path": "/api/push/cron-birthdays", "schedule": "35 16 * * *" }
   ],
   "rewrites": [
     { "source": "/db/rest/(.*)", "destination": "/api/rest?table=$1" },
