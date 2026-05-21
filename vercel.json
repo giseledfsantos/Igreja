@@ -1,0 +1,20 @@
+{
+  "outputDirectory": "Igreja/wwwroot",
+  "crons": [
+    { "path": "/api/push/cron-birthdays", "schedule": "15 19 * * *" }
+  ],
+  "rewrites": [
+    { "source": "/db/rest/(.*)", "destination": "/api/rest?table=$1" },
+    { "source": "/api/rest/(.*)", "destination": "/api/rest?table=$1" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/styles.css", "destination": "/Igreja/wwwroot/styles.css" },
+    { "source": "/app.js", "destination": "/Igreja/wwwroot/app.js" },
+    { "source": "/schema.json", "destination": "/Igreja/wwwroot/schema.json" },
+    { "source": "/manifest.json", "destination": "/Igreja/wwwroot/manifest.json" },
+    { "source": "/sw.js", "destination": "/Igreja/wwwroot/sw.js" },
+    { "source": "/tela-inicial.jpg", "destination": "/Igreja/wwwroot/tela-inicial.jpg" },
+    { "source": "/favicon.ico", "destination": "/api/favicon?type=ico" },
+    { "source": "/favicon.png", "destination": "/api/favicon?type=png" },
+    { "source": "/(.*)", "destination": "/Igreja/wwwroot/index.html" }
+  ]
+}
