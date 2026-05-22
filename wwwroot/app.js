@@ -1059,6 +1059,7 @@ function renderMembersScreen(schema, table) {
   let lastConsultaScrollY = 0
   let shouldRestoreConsultaScroll = false
   let filtroNomeInput = null
+  let filtroMatriculaSelect = null
   let filtroDataNascInput = null
   let filtroGruposField = null
   let filtroCargosInternosField = null
@@ -1153,6 +1154,7 @@ function renderMembersScreen(schema, table) {
     try {
       const data = await apiList(table.name)
       const nomeQ = filtroNomeInput ? normText(filtroNomeInput.value) : ''
+      const matriculaFilter = filtroMatriculaSelect ? String(filtroMatriculaSelect.value || 'TODOS') : 'TODOS'
       const dataNascQ = filtroDataNascInput ? String(filtroDataNascInput.value || '') : ''
       const mesesQ = new Set(filtroMesesField ? filtroMesesField.getSelected().map(x => String(x)) : [])
       const gruposQ = new Set(filtroGruposField ? filtroGruposField.getSelected().map(x => String(x)) : [])
@@ -1170,6 +1172,12 @@ function renderMembersScreen(schema, table) {
         if (nomeQ) {
           const hay = `${item?.nome ?? ''} ${item?.matricula ?? ''}`
           if (!normText(hay).includes(nomeQ)) return false
+        }
+        if (matriculaFilter && matriculaFilter !== 'TODOS') {
+          const mat = String(item?.matricula ?? '').trim()
+          const hasMatricula = !!mat
+          if (matriculaFilter === 'SIM' && !hasMatricula) return false
+          if (matriculaFilter === 'NAO' && hasMatricula) return false
         }
         const dn = item?.data_nascimento
         if (dataNascQ && dateOnly(dn) !== dataNascQ) return false
@@ -1390,6 +1398,22 @@ function renderMembersScreen(schema, table) {
   filtroNomeWrap.appendChild(filtroNomeLabel)
   filtroNomeWrap.appendChild(filtroNomeInput)
 
+  filtroMatriculaSelect = document.createElement('select')
+  const optTodos = document.createElement('option'); optTodos.value = 'TODOS'; optTodos.textContent = 'TODOS'
+  const optSim = document.createElement('option'); optSim.value = 'SIM'; optSim.textContent = 'SIM'
+  const optNao = document.createElement('option'); optNao.value = 'NAO'; optNao.textContent = 'NÃO'
+  filtroMatriculaSelect.appendChild(optTodos)
+  filtroMatriculaSelect.appendChild(optSim)
+  filtroMatriculaSelect.appendChild(optNao)
+  filtroMatriculaSelect.value = 'TODOS'
+  filtroMatriculaSelect.onchange = () => refreshList()
+  const filtroMatriculaWrap = document.createElement('div')
+  filtroMatriculaWrap.className = 'field'
+  const filtroMatriculaLabel = document.createElement('label')
+  filtroMatriculaLabel.textContent = 'Matrícula'
+  filtroMatriculaWrap.appendChild(filtroMatriculaLabel)
+  filtroMatriculaWrap.appendChild(filtroMatriculaSelect)
+
   filtroDataNascInput = document.createElement('input')
   filtroDataNascInput.type = 'date'
   filtroDataNascInput.onchange = () => refreshList()
@@ -1419,6 +1443,7 @@ function renderMembersScreen(schema, table) {
   ])
 
   filtersWrap.appendChild(filtroNomeWrap)
+  filtersWrap.appendChild(filtroMatriculaWrap)
   filtersWrap.appendChild(filtroGruposField.wrap)
   filtersWrap.appendChild(filtroCargosInternosField.wrap)
   filtersWrap.appendChild(filtroDataWrap)
