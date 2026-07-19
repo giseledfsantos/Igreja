@@ -773,6 +773,14 @@ button.danger { background: var(--danger); color: white; }
   .caixa-actions .icon-btn { width: 28px; height: 28px; }
   .caixa-actions .icon-btn svg { width: 14px; height: 14px; }
   .ebd-table thead tr:nth-child(1) th.ebd-month-group { display: none; }
+  .ebd-table thead tr:nth-child(2) th {
+    top: 0;
+    z-index: 9;
+  }
+  .ebd-table thead tr:nth-child(1) th[rowspan] {
+    top: 0;
+    z-index: 10;
+  }
   .ebd-sticky { will-change: auto; transform: none; }
   .ebd-one-day .ebd-day,
   .ebd-one-day .ebd-cell {
