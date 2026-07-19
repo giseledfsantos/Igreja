@@ -818,9 +818,19 @@ button.danger { background: var(--danger); color: white; }
   position: sticky;
   top: 0;
   z-index: 2;
+  background: #0b1220;
+  background-clip: padding-box;
+}
+.ebd-table thead tr:first-child th {
+  top: 0;
+  z-index: 9;
+}
+.ebd-table thead tr:first-child th.ebd-sticky {
+  z-index: 10;
 }
 .ebd-table thead tr:nth-child(2) th {
   top: var(--ebd-head1, 0px);
+  z-index: 8;
 }
 .ebd-sticky {
   position: -webkit-sticky;

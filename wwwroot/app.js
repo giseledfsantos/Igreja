@@ -1060,7 +1060,6 @@ function renderMembersScreen(schema, table) {
   let shouldRestoreConsultaScroll = false
   let filtroNomeInput = null
   let filtroMatriculaSelect = null
-  let filtroDataNascInput = null
   let filtroGruposField = null
   let filtroCargosInternosField = null
   let filtroMesesField = null
@@ -1105,6 +1104,18 @@ function renderMembersScreen(schema, table) {
     const dt = new Date(String(value ?? ''))
     if (!Number.isFinite(dt.getTime())) return ''
     return String(dt.getMonth() + 1)
+  }
+  function formatDatePtBr(value) {
+    const d = dateOnly(value)
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`
+    const dt = new Date(String(value ?? ''))
+    if (!Number.isFinite(dt.getTime())) return ''
+    try {
+      return dt.toLocaleDateString('pt-BR')
+    } catch {
+      return ''
+    }
   }
   function intersectsSet(a, b) {
     for (const v of a) if (b.has(v)) return true
@@ -1155,7 +1166,6 @@ function renderMembersScreen(schema, table) {
       const data = await apiList(table.name)
       const nomeQ = filtroNomeInput ? normText(filtroNomeInput.value) : ''
       const matriculaFilter = filtroMatriculaSelect ? String(filtroMatriculaSelect.value || 'TODOS') : 'TODOS'
-      const dataNascQ = filtroDataNascInput ? String(filtroDataNascInput.value || '') : ''
       const mesesQ = new Set(filtroMesesField ? filtroMesesField.getSelected().map(x => String(x)) : [])
       const gruposQ = new Set(filtroGruposField ? filtroGruposField.getSelected().map(x => String(x)) : [])
       const cargosQ = new Set(filtroCargosInternosField ? filtroCargosInternosField.getSelected().map(x => String(x)) : [])
@@ -1180,7 +1190,6 @@ function renderMembersScreen(schema, table) {
           if (matriculaFilter === 'NAO' && hasMatricula) return false
         }
         const dn = item?.data_nascimento
-        if (dataNascQ && dateOnly(dn) !== dataNascQ) return false
         if (mesesQ.size) {
           const m = monthFromDate(dn)
           if (!m || !mesesQ.has(m)) return false
@@ -1214,6 +1223,13 @@ function renderMembersScreen(schema, table) {
       filtered.forEach(item => {
         const div = document.createElement('div')
         div.className = 'list-item'
+        const main = document.createElement('div')
+        main.className = 'list-main'
+        const titleRow = document.createElement('div')
+        titleRow.style.display = 'flex'
+        titleRow.style.alignItems = 'center'
+        titleRow.style.justifyContent = 'space-between'
+        titleRow.style.gap = '12px'
         const title = document.createElement('div'); title.className = 'title'; title.textContent = item.nome || (item.matricula || '')
         title.style.cursor = 'pointer'
         title.onclick = async () => {
@@ -1221,6 +1237,15 @@ function renderMembersScreen(schema, table) {
           await fillCadastro(item)
           setActiveCadastro({ keep: true, id: String(item?.[table.pk] ?? '').trim(), scrollTop: true })
         }
+        const birth = document.createElement('div')
+        birth.className = 'subtitle'
+        birth.textContent = formatDatePtBr(item?.data_nascimento)
+        birth.style.textAlign = 'right'
+        birth.style.whiteSpace = 'nowrap'
+        birth.style.minWidth = '84px'
+        titleRow.appendChild(title)
+        titleRow.appendChild(birth)
+        main.appendChild(titleRow)
         const actionsDiv = document.createElement('div'); actionsDiv.className = 'grid-actions'
         const btnDelete = document.createElement('button'); btnDelete.type = 'button'; btnDelete.title = 'Excluir'; btnDelete.setAttribute('aria-label', 'Excluir'); btnDelete.className = 'danger icon-btn'; setButtonIcon(btnDelete, 'trash')
         btnDelete.onclick = async (ev) => {
@@ -1256,7 +1281,7 @@ function renderMembersScreen(schema, table) {
           }
         }
         actionsDiv.appendChild(btnDelete)
-        div.appendChild(title)
+        div.appendChild(main)
         div.appendChild(actionsDiv)
         frag.appendChild(div)
       })
@@ -1414,16 +1439,6 @@ function renderMembersScreen(schema, table) {
   filtroMatriculaWrap.appendChild(filtroMatriculaLabel)
   filtroMatriculaWrap.appendChild(filtroMatriculaSelect)
 
-  filtroDataNascInput = document.createElement('input')
-  filtroDataNascInput.type = 'date'
-  filtroDataNascInput.onchange = () => refreshList()
-  const filtroDataWrap = document.createElement('div')
-  filtroDataWrap.className = 'field'
-  const filtroDataLabel = document.createElement('label')
-  filtroDataLabel.textContent = 'Data de nascimento'
-  filtroDataWrap.appendChild(filtroDataLabel)
-  filtroDataWrap.appendChild(filtroDataNascInput)
-
   filtroGruposField = createChecklistField('Grupo(s)', () => refreshList())
   filtroCargosInternosField = createChecklistField('Cargo(s) interno(s)', () => refreshList())
   filtroMesesField = createChecklistField('Mês de nascimento', () => refreshList())
@@ -1446,7 +1461,6 @@ function renderMembersScreen(schema, table) {
   filtersWrap.appendChild(filtroMatriculaWrap)
   filtersWrap.appendChild(filtroGruposField.wrap)
   filtersWrap.appendChild(filtroCargosInternosField.wrap)
-  filtersWrap.appendChild(filtroDataWrap)
   filtersWrap.appendChild(filtroMesesField.wrap)
 
   const GRUPOS_TABLE = 'grupos'
