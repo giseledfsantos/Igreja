@@ -797,7 +797,8 @@ button.danger { background: var(--danger); color: white; }
   }
   .ebd-one-day .ebd-day,
   .ebd-report .ebd-day {
-    position: relative;
+    position: -webkit-sticky;
+    position: sticky;
     line-height: 1;
     padding-top: 16px;
   }
