@@ -773,6 +773,9 @@ button.danger { background: var(--danger); color: white; }
   }
   .ebd-table th, .ebd-table td { padding: 4px 6px; font-size: 11px; }
   .ebd-sticky-1 { min-width: 160px; }
+  .ebd-wrap.ebd-one-day .ebd-sticky-1 {
+    touch-action: pan-y;
+  }
   .ebd-turma { width: 100px; }
   .caixa-desc { min-width: 180px; }
   .caixa-actions .icon-btn { width: 28px; height: 28px; }
