@@ -3272,24 +3272,6 @@ function renderEbdScreen(schema, table) {
     const desiredLeft = stickyRect.right + 8
     const delta = targetRect.left - desiredLeft
     const targetLeft = Math.max(0, container.scrollLeft + delta)
-    //#region debug-point focus-scroll-calc
-    try {
-      window.__ebdFocusDebug = window.__ebdFocusDebug || []
-      window.__ebdFocusDebug.push({
-        at: new Date().toISOString(),
-        targetIso: String(th?.dataset?.iso || ''),
-        firstIso: String(firstDayTh?.dataset?.iso || ''),
-        scrollLeftBefore: Number(container.scrollLeft || 0),
-        delta,
-        targetLeft,
-        firstDayLeft: firstDayRect.left,
-        targetDayLeft: targetRect.left,
-        containerLeft: containerRect.left,
-        stickyRight: stickyRect.right,
-        desiredLeft
-      })
-    } catch {}
-    //#endregion debug-point focus-scroll-calc
     container.scrollLeft = targetLeft
   }
 
