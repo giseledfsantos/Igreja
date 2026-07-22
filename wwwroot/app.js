@@ -3268,7 +3268,31 @@ function renderEbdScreen(schema, table) {
     const targetRect = th.getBoundingClientRect()
     const delta = targetRect.left - firstDayRect.left
     const targetLeft = Math.max(0, container.scrollLeft + delta)
+    //#region debug-point focus-scroll-calc
+    try {
+      window.__ebdFocusDebug = window.__ebdFocusDebug || []
+      window.__ebdFocusDebug.push({
+        at: new Date().toISOString(),
+        targetIso: String(th?.dataset?.iso || ''),
+        firstIso: String(firstDayTh?.dataset?.iso || ''),
+        scrollLeftBefore: Number(container.scrollLeft || 0),
+        delta,
+        targetLeft,
+        firstDayLeft: firstDayRect.left,
+        targetDayLeft: targetRect.left,
+        containerLeft: containerRect.left
+      })
+    } catch {}
+    //#endregion debug-point focus-scroll-calc
     container.scrollLeft = targetLeft
+  }
+
+  function stabilizeDayColumnIntoView(container, th, tableRef) {
+    if (!container || !th || !tableRef) return
+    const run = () => scrollDayColumnIntoView(container, th, tableRef)
+    run()
+    try { requestAnimationFrame(() => requestAnimationFrame(run)) } catch {}
+    try { setTimeout(run, 120) } catch {}
   }
 
   function focusNearestDay() {
@@ -3280,7 +3304,7 @@ function renderEbdScreen(schema, table) {
     if (!targetIso) return
     const th = tableEl.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
     if (!th) return
-    scrollDayColumnIntoView(wrap, th, tableEl)
+    stabilizeDayColumnIntoView(wrap, th, tableEl)
   }
 
   function applyHeaderOffsetForTable(t) {
@@ -3300,7 +3324,7 @@ function renderEbdScreen(schema, table) {
     if (!targetIso) return
     const th = t.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
     if (!th) return
-    scrollDayColumnIntoView(t.parentElement, th, t)
+    stabilizeDayColumnIntoView(t.parentElement, th, t)
   }
 
   function buildReportHeader() {
