@@ -3261,9 +3261,9 @@ function renderEbdScreen(schema, table) {
 
   function scrollDayColumnIntoView(container, th, tableRef) {
     if (!container || !th || !tableRef) return
-    const stickyEl = tableRef.querySelector('.ebd-sticky-1')
-    const stickyWidth = Math.ceil(stickyEl?.getBoundingClientRect?.().width || 0)
-    const targetLeft = Math.max(0, th.offsetLeft - stickyWidth - 8)
+    const firstDayTh = tableRef.querySelector('thead tr:last-child th[data-iso]')
+    const baseOffset = Math.ceil(firstDayTh?.offsetLeft || 0)
+    const targetLeft = Math.max(0, th.offsetLeft - baseOffset)
     container.scrollLeft = targetLeft
   }
 
