@@ -3264,9 +3264,13 @@ function renderEbdScreen(schema, table) {
     const firstDayTh = tableRef.querySelector('thead tr:last-child th[data-iso]')
     if (!firstDayTh) return
     const containerRect = container.getBoundingClientRect()
+    const stickyEl = tableRef.querySelector('.ebd-sticky-1')
+    if (!stickyEl) return
+    const stickyRect = stickyEl.getBoundingClientRect()
     const firstDayRect = firstDayTh.getBoundingClientRect()
     const targetRect = th.getBoundingClientRect()
-    const delta = targetRect.left - firstDayRect.left
+    const desiredLeft = stickyRect.right + 8
+    const delta = targetRect.left - desiredLeft
     const targetLeft = Math.max(0, container.scrollLeft + delta)
     //#region debug-point focus-scroll-calc
     try {
@@ -3280,11 +3284,13 @@ function renderEbdScreen(schema, table) {
         targetLeft,
         firstDayLeft: firstDayRect.left,
         targetDayLeft: targetRect.left,
-        containerLeft: containerRect.left
+        containerLeft: containerRect.left,
+        stickyRight: stickyRect.right,
+        desiredLeft
       })
     } catch {}
     //#endregion debug-point focus-scroll-calc
-    container.scrollLeft = Math.max(0, delta)
+    container.scrollLeft = targetLeft
   }
 
   function stabilizeDayColumnIntoView(container, th, tableRef) {
