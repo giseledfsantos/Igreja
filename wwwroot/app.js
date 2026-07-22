@@ -3284,7 +3284,7 @@ function renderEbdScreen(schema, table) {
       })
     } catch {}
     //#endregion debug-point focus-scroll-calc
-    container.scrollLeft = targetLeft
+    container.scrollLeft = Math.max(0, delta)
   }
 
   function stabilizeDayColumnIntoView(container, th, tableRef) {
