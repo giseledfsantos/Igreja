@@ -3259,6 +3259,14 @@ function renderEbdScreen(schema, table) {
     }
   }
 
+  function scrollDayColumnIntoView(container, th, tableRef) {
+    if (!container || !th || !tableRef) return
+    const stickyEl = tableRef.querySelector('.ebd-sticky-1')
+    const stickyWidth = Math.ceil(stickyEl?.getBoundingClientRect?.().width || 0)
+    const targetLeft = Math.max(0, th.offsetLeft - stickyWidth - 8)
+    container.scrollLeft = targetLeft
+  }
+
   function focusNearestDay() {
     let targetIso = ''
     for (let i = 0; i < sundays.length; i++) {
@@ -3268,7 +3276,7 @@ function renderEbdScreen(schema, table) {
     if (!targetIso) return
     const th = tableEl.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
     if (!th) return
-    try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
+    scrollDayColumnIntoView(wrap, th, tableEl)
   }
 
   function applyHeaderOffsetForTable(t) {
@@ -3288,7 +3296,7 @@ function renderEbdScreen(schema, table) {
     if (!targetIso) return
     const th = t.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
     if (!th) return
-    try { th.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch {}
+    scrollDayColumnIntoView(t.parentElement, th, t)
   }
 
   function buildReportHeader() {
