@@ -3261,10 +3261,10 @@ function renderEbdScreen(schema, table) {
 
   function focusNearestDay() {
     let targetIso = ''
-    for (let i = sundays.length - 1; i >= 0; i--) {
-      if (sundays[i].iso <= todayIso) { targetIso = sundays[i].iso; break }
+    for (let i = 0; i < sundays.length; i++) {
+      if (sundays[i].iso > todayIso) { targetIso = sundays[i].iso; break }
     }
-    if (!targetIso && sundays.length) targetIso = sundays[0].iso
+    if (!targetIso && sundays.length) targetIso = sundays[sundays.length - 1].iso
     if (!targetIso) return
     const th = tableEl.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
     if (!th) return
@@ -3281,10 +3281,10 @@ function renderEbdScreen(schema, table) {
 
   function focusNearestDayForTable(t, days) {
     let targetIso = ''
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (days[i].iso <= todayIso) { targetIso = days[i].iso; break }
+    for (let i = 0; i < days.length; i++) {
+      if (days[i].iso > todayIso) { targetIso = days[i].iso; break }
     }
-    if (!targetIso && days.length) targetIso = days[0].iso
+    if (!targetIso && days.length) targetIso = days[days.length - 1].iso
     if (!targetIso) return
     const th = t.querySelector(`thead tr:last-child th[data-iso="${targetIso}"]`)
     if (!th) return
